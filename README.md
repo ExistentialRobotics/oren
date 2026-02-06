@@ -107,7 +107,7 @@ $\nabla$-SDF is a hybrid SDF reconstruction framework that combines gradient-aug
 
 ```bash
 # from repo root
-colcon build --packages-select grad_sdf --log-base /home/qihao/workplace/grad-sdf/colcon_logs
+colcon build --packages-select grad_sdf
 source install/setup.bash
 ```
 
