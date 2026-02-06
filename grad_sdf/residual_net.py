@@ -26,7 +26,7 @@ class ResidualNet(nn.Module):
         self.cfg = cfg
 
         self.residual_net = tcnn.Network(
-            n_input_dims=cfg.residual_feature_dim,
+            n_input_dims=cfg.residual_feature_dim + 3,
             n_output_dims=1,
             network_config={
                 "otype": "FullyFusedMLP",
@@ -42,5 +42,5 @@ class ResidualNet(nn.Module):
         return sdf
 
     def forward(self, residual_features: torch.Tensor):
-        sdf = self.get_sdf(residual_features.view(-1, 4)).view(residual_features.shape[:-1])
+        sdf = self.get_sdf(residual_features)
         return sdf

@@ -43,23 +43,20 @@ class DataLoader(Dataset):
         if self.bound_min is not None:
             assert self.bound_max is not None
             self.bound_min = torch.tensor(self.bound_min).float()
-            self.bound_min += self.offset
         if self.bound_max is not None:
             assert self.bound_min is not None
             self.bound_max = torch.tensor(self.bound_max).float()
-            self.bound_max += self.offset
 
-        self.num_imgs = len(glob(osp.join(self.data_path, "results/*.png")))
+        self.num_imgs = len(glob(osp.join(self.data_path, "results/*.jpg")))
         self.K = self.load_intrinsic()
         self.gt_pose = self.load_gt_pose()
 
     @staticmethod
     def load_intrinsic():
         K = torch.eye(3)
-        K[0, 0] = 128
-        K[1, 1] = 64
-        K[0, 2] = 127.5
-        K[1, 2] = 63.5
+        K[0, 0] = K[1, 1] = 600
+        K[0, 2] = 599.5
+        K[1, 2] = 339.5
 
         return K
 
@@ -79,7 +76,7 @@ class DataLoader(Dataset):
 
     def load_depth(self, index) -> torch.Tensor:
         depth = cv2.imread(osp.join(self.data_path, "results/depth{:06d}.png".format(index)), -1)
-        depth = depth / 1000.0
+        depth = depth / 6553.5
         if self.min_depth > 0:
             depth[depth < self.min_depth] = 0
         if self.max_depth > 0:

@@ -164,7 +164,7 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
         vertex_sdf_priors = self.sdf_priors[vertex_indices]  # (n_points, 8)
         vertex_grad_priors = self.grad_priors[vertex_indices]  # (n_points, 8, 3)
 
-        sdf_preds = ga_trilinear(
+        sdf_preds, p = ga_trilinear(
             points=points,
             voxel_centers=voxel_centers,
             voxel_sizes=voxel_sizes,
@@ -184,6 +184,8 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
                 per_point_vertex_values=per_point_vertex_residual_features,
                 little_endian=self.little_endian_vertex_order,
             )
+            points_position_relative = p * 2 - 1
+            residual_features = torch.cat([residual_features, points_position_relative], dim=-1)
         else:
             residual_features = None
 

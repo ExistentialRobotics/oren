@@ -16,6 +16,8 @@ class CriterionConfig(ConfigABC):
     perturbation_loss_type: str = "L1"
     eikonal_loss_surface_weight: float = 1.0
     eikonal_loss_surface_prior_weight: float = 1.0
+    eikonal_loss_perturbation_weight: float = 1.0
+    eikonal_loss_perturbation_prior_weight: float = 1.0
     eikonal_loss_space_weight: float = 1.0
     eikonal_loss_space_prior_weight: float = 1.0
     eikonal_loss_type: str = "L1"
@@ -110,6 +112,14 @@ class Criterion(nn.Module):
             eikonal_loss_surface_prior = self.get_eikonal_loss_surface(grad_norm_prior)
             loss += self.cfg.eikonal_loss_surface_prior_weight * eikonal_loss_surface_prior
             loss_dict["eikonal_loss_surface_prior"] = eikonal_loss_surface_prior.item()
+        if self.cfg.eikonal_loss_perturbation_weight > 0:
+            eikonal_loss_perturbation = self.get_eikonal_loss_perturbation(grad_norm)
+            loss += self.cfg.eikonal_loss_perturbation_weight * eikonal_loss_perturbation
+            loss_dict["eikonal_loss_perturbation"] = eikonal_loss_perturbation.item()
+        if self.cfg.eikonal_loss_perturbation_prior_weight > 0:
+            eikonal_loss_perturbation_prior = self.get_eikonal_loss_perturbation(grad_norm_prior)
+            loss += self.cfg.eikonal_loss_perturbation_prior_weight * eikonal_loss_perturbation_prior
+            loss_dict["eikonal_loss_perturbation_prior"] = eikonal_loss_perturbation_prior.item()
         if self.cfg.eikonal_loss_space_weight > 0:
             eikonal_loss_space = self.get_eikonal_loss_space(grad_norm)
             loss += self.cfg.eikonal_loss_space_weight * eikonal_loss_space
@@ -155,9 +165,16 @@ class Criterion(nn.Module):
         return perturbation_loss
 
     def get_eikonal_loss_surface(self, grad_norm: torch.Tensor):
-        grad_norm_surface = grad_norm[:, self.n_stratified :]  # surface & perturbation
+        grad_norm_surface = grad_norm[:, -1]  # surface
         eikonal_loss_surface = self.eikonal_loss_fn(grad_norm_surface, torch.ones_like(grad_norm_surface))
         return eikonal_loss_surface
+
+    def get_eikonal_loss_perturbation(self, grad_norm: torch.Tensor):
+        grad_norm_perturbation = grad_norm[:, self.n_stratified : self.n_stratified + self.n_perturbed]
+        eikonal_loss_perturbation = self.eikonal_loss_fn(
+            grad_norm_perturbation, torch.ones_like(grad_norm_perturbation)
+        )
+        return eikonal_loss_perturbation
 
     def get_eikonal_loss_space(self, grad_norm: torch.Tensor):
         grad_norm_space = grad_norm[:, : self.n_stratified]  # free space

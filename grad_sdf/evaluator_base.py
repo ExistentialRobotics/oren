@@ -223,10 +223,14 @@ class EvaluatorBase:
             if len(results) == 0:
                 return dict()
 
-        results["grid_bound"] = torch.tensor([bound_min, bound_max])
+        # Convert bound_min and bound_max to tensors if they aren't already
+        bound_min_tensor = torch.as_tensor(bound_min) if not isinstance(bound_min, torch.Tensor) else bound_min
+        bound_max_tensor = torch.as_tensor(bound_max) if not isinstance(bound_max, torch.Tensor) else bound_max
+        results["grid_bound"] = torch.stack([bound_min_tensor, bound_max_tensor])
         results["grid_shape"] = torch.tensor(grid_points.shape[:-1], dtype=torch.long)
         results["grid_resolution"] = torch.tensor(grid_resolution)
-        results["mask"] = mask.to(self.device if device is None else device)  # type: ignore
+        if mask is not None:
+            results["mask"] = mask.to(self.device if device is None else device)  # type: ignore
 
         return results
 

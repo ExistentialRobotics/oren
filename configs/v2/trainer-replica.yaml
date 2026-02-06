@@ -5,11 +5,10 @@ exp_name: grad_sdf
 device: cuda
 data:
     identifier: grad_sdf.dataset.data_config.DataConfig
-    dataset_name: newercollege
+    dataset_name: replica
     dataset_args:
-        data_path: "data/newercollege-lidar-rotated"
-        min_depth: 0.8
-        max_depth: 40.0
+        min_depth: 0.0
+        max_depth: -1.0
         offset: [0.0, 0.0, 0.0]
         bound_min:
         bound_max:
@@ -21,41 +20,41 @@ key_frame_set:
     insert_interval: 50
     insert_ratio: 0.85
     frame_selection: multiple_max_set_coverage
-    selection_window_size: 16
+    selection_window_size: 8
     frame_weight: uniform
 model:
     identifier: grad_sdf.model.SdfNetworkConfig
     octree_cfg:
         identifier: grad_sdf.octree_config.OctreeConfig
-        resolution: 0.7
+        resolution: 0.1
         tree_depth: 8 # 0.14*512=71.68m  mesh size  [39.74192742 57.25316639 27.58267038]
         semi_sparse_depth: 5
-        init_voxel_num: 80000
-        insertion_threshold: 4
+        init_voxel_num: 200000
+        insertion_threshold: 3
         skip_insertion_if_exists: true # speed up a bit
-        residual_feature_dim: 8
+        residual_feature_dim: 4
         # gradient_augmentation: true
     residual_net_cfg:
         identifier: grad_sdf.residual_net.ResidualNetConfig
         mlp_activation: Tanh
-        hidden_dims: 128
-        n_hidden_layers: 3
-        output_sdf_scale: 1
-        residual_feature_dim: 8
+        hidden_dims: 64
+        n_hidden_layers: 2
+        output_sdf_scale: 0.1
+        residual_feature_dim: 4
 criterion:
     identifier: grad_sdf.criterion.CriterionConfig
-    boundary_loss_weight: 500
+    boundary_loss_weight: 100
     perturbation_loss_weight: 0
-    eikonal_loss_surface_weight: 500
+    eikonal_loss_surface_weight: 0
     eikonal_loss_perturbation_weight: 0
     eikonal_loss_space_weight: 0
     projection_loss_weight: 0
 
-    boundary_loss_prior_weight: 100
-    perturbation_loss_prior_weight: 100
-    eikonal_loss_surface_prior_weight: 100
-    eikonal_loss_perturbation_prior_weight: 50
-    eikonal_loss_space_prior_weight: 100
+    boundary_loss_prior_weight: 1000
+    perturbation_loss_prior_weight: 200
+    eikonal_loss_surface_prior_weight: 3
+    eikonal_loss_perturbation_prior_weight: 3
+    eikonal_loss_space_prior_weight: 10
     projection_loss_prior_weight: 100
     boundary_loss_type: L1
     perturbation_loss_type: L1
@@ -69,24 +68,24 @@ criterion:
 num_init_frames: 3
 init_frame_iterations: 10
 num_iterations_per_frame: 1
-num_rays_total: 81920
-extra_surface_sample: true
+num_rays_total: 20480
+extra_surface_sample: false
 frame_downsample: 10
 sample_rays:
     identifier: grad_sdf.utils.sampling.SampleRaysConfig
     n_stratified: 1
     n_perturbed: 2
-    depth_min: 0.8
-    depth_max: 40.0
-    surface_margin: 1.44
-    sigma_s: 0.72
+    depth_min: 0.07
+    depth_max: 10.0
+    surface_margin: 0.12
+    sigma_s: 0.06
 batch_size: 204800
 lr: 0.005
 grad_method: finite_difference
 finite_difference_eps: 0.03
 final_iterations: 0
 save_mesh: true
-mesh_resolution: 0.2
+mesh_resolution: 0.02
 mesh_iso_value: 0.0
 clean_mesh: true
 ckpt_interval: -1
