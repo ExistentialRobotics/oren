@@ -91,7 +91,7 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
         voxels_unique = torch.unique(voxels_valid, dim=0)  # (n_unique, 3) of grid coordinates
         if self.cfg.skip_insertion_if_exists and self.ever_inserted:
             device = self.sdf_priors.device
-            voxel_indices = self.find_voxel_indices(voxels_unique.to(device), True)  # (n_unique,)
+            voxel_indices = self.find_voxel_indices(voxels_unique.to(device), True, level=1)  # (n_unique,)
             voxel_sizes = self.get_voxel_discrete_size(voxel_indices)  # (n_unique,)
             mask = voxel_sizes != 1  # only insert voxels that do not exist at size 1
             voxel_indices[mask] = self.insert_voxels(voxels_unique[mask]).to(device)
@@ -118,7 +118,7 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
         return voxel_sizes
 
     @abstractmethod
-    def find_voxel_indices(self, points: torch.Tensor, are_voxels: bool) -> torch.Tensor:
+    def find_voxel_indices(self, points: torch.Tensor, are_voxels: bool, level: int = 1) -> torch.Tensor:
         """
         Finds the voxel indices for the given points.
         Args:
@@ -176,11 +176,16 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
         )
 
         if self.cfg.residual_feature_dim > 0:
-            per_point_vertex_residual_features = self.residual_features[
-                vertex_indices
-            ]  # (n_points, 8, residual_feature_dim)
+            # per_point_vertex_residual_features = self.residual_features[voxel_indices]
+            # for level in range(2, self.cfg.residual_num_levels):
+            #     residual_voxel_indices = self.find_voxel_indices(points, False, level)
+                # per_point_vertex_residual_features = torch.cat(
+                #     [per_point_vertex_residual_features, self.residual_features[residual_voxel_indices]],
+                #     dim=-1,
+                # )
+            per_point_vertex_residual_features = self.residual_features[voxel_indices]  # (n_points, 8, residual_feature_dim)
             residual_features = trilinear_interpolation(
-                points=points,
+                points=p,
                 per_point_vertex_values=per_point_vertex_residual_features,
                 little_endian=self.little_endian_vertex_order,
             )

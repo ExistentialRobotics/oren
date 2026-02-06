@@ -45,7 +45,7 @@ criterion:
     identifier: grad_sdf.criterion.CriterionConfig
     boundary_loss_weight: 100
     perturbation_loss_weight: 0
-    eikonal_loss_surface_weight: 0
+    eikonal_loss_surface_weight: 5
     eikonal_loss_perturbation_weight: 0
     eikonal_loss_space_weight: 0
     projection_loss_weight: 0

@@ -270,9 +270,9 @@ def main():
         bound_min = args.bound_min
         bound_max = args.bound_max
         if bound_min is None:
-            bound_min = trainer_cfg.data.dataset_args.bound_min - 0.15
+            bound_min = trainer_cfg.data.dataset_args["bound_min"] - 0.15
         if bound_max is None:
-            bound_max = trainer_cfg.data.dataset_args.bound_max + 0.15
+            bound_max = trainer_cfg.data.dataset_args["bound_max"] + 0.15
         results = evaluator.extract_sdf_grid(
             bound_min=bound_min,
             bound_max=bound_max,
@@ -291,9 +291,9 @@ def main():
         bound_min = args.bound_min
         bound_max = args.bound_max
         if bound_min is None:
-            bound_min = trainer_cfg.data.dataset_args.bound_min - 0.15
+            bound_min = trainer_cfg.data.dataset_args["bound_min"] - 0.15
         if bound_max is None:
-            bound_max = trainer_cfg.data.dataset_args.bound_max + 0.15
+            bound_max = trainer_cfg.data.dataset_args["bound_max"] + 0.15
         meshes = evaluator.extract_mesh(
             bound_min=bound_min,
             bound_max=bound_max,
