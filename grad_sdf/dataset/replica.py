@@ -40,12 +40,12 @@ class DataLoader(Dataset):
             self.offset: torch.Tensor = torch.zeros(3)
         else:
             self.offset: torch.Tensor = torch.tensor(self.offset).float()
-        if self.bound_min is not None:
-            assert self.bound_max is not None
-            self.bound_min = torch.tensor(self.bound_min).float()
-        if self.bound_max is not None:
-            assert self.bound_min is not None
-            self.bound_max = torch.tensor(self.bound_max).float()
+        # if self.bound_min is not None:
+        #     assert self.bound_max is not None
+        #     self.bound_min = torch.tensor(self.bound_min).float()
+        # if self.bound_max is not None:
+        #     assert self.bound_min is not None
+        #     self.bound_max = torch.tensor(self.bound_max).float()
 
         self.num_imgs = len(glob(osp.join(self.data_path, "results/*.jpg")))
         self.K = self.load_intrinsic()

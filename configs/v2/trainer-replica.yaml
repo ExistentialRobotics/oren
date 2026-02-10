@@ -41,7 +41,7 @@ model:
         input_feature_dim: 12
         hidden_dims: 128
         n_hidden_layers: 3
-        output_sdf_scale: 1.0
+        output_sdf_scale: 10.0
 criterion:
     identifier: grad_sdf.criterion.CriterionConfig
     boundary_loss_weight: 1000
