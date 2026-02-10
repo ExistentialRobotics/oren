@@ -44,11 +44,11 @@ class SdfNetwork(nn.Module):
         points = points.view(-1, 3)
         if voxel_indices is not None:
             voxel_indices = voxel_indices.view(-1)
-        sdf_prior, residual_features, voxel_indices = self.octree(points, voxel_indices)
+        sdf_prior, prior_features, residual_features, voxel_indices = self.octree(points, voxel_indices)
         # bound_min = torch.tensor(self.residual.bound_min, device=points.device)
         # bound_max = torch.tensor(self.residual.bound_max, device=points.device)
         # points_normalized = (points - bound_min) / (bound_max - bound_min) * 2 - 1
-        residual_network_input = torch.cat([residual_features, sdf_prior.unsqueeze(-1).detach()], dim=-1)
+        residual_network_input = torch.cat([prior_features.detach(), residual_features], dim=-1)
         sdf_residual = self.residual(residual_network_input)
 
         sdf_prior = sdf_prior.view(shape[:-1])

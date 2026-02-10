@@ -175,6 +175,11 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
             little_endian=self.little_endian_vertex_order,
         )
 
+        prior_features = torch.cat(
+            [p, vertex_sdf_priors.reshape(-1, 8), vertex_grad_priors.reshape(-1, 24)],
+            dim=-1,
+        )  # (n_points, 34)
+
         if self.cfg.residual_feature_dim > 0:
             per_point_vertex_residual_features_level_1 = self.residual_features[
                 vertex_indices
@@ -205,7 +210,7 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
         else:
             residual_features = None
 
-        return sdf_preds, residual_features, voxel_indices
+        return sdf_preds, prior_features, residual_features, voxel_indices
 
     @property
     @abstractmethod

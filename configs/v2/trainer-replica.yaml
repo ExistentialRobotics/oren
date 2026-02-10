@@ -32,20 +32,20 @@ model:
         init_voxel_num: 200000
         insertion_threshold: 1
         skip_insertion_if_exists: true # speed up a bit
-        residual_feature_dim: 4
+        residual_feature_dim: 7
         residual_num_levels: 1
         # gradient_augmentation: true
     residual_net_cfg:
         identifier: grad_sdf.residual_net.ResidualNetConfig
-        mlp_activation: Tanh
+        mlp_activation: ReLU
         input_feature_dim: 12
-        hidden_dims: 64
+        hidden_dims: 128
         n_hidden_layers: 2
         output_sdf_scale: 0.05
 criterion:
     identifier: grad_sdf.criterion.CriterionConfig
     boundary_loss_weight: 100
-    perturbation_loss_weight: 0
+    perturbation_loss_weight: 3
     eikonal_loss_surface_weight: 0
     eikonal_loss_perturbation_weight: 0
     eikonal_loss_space_weight: 0
