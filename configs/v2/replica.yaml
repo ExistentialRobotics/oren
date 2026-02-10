@@ -3,7 +3,7 @@
 # bound_max: [3.869352102279663, 2.348031520843506, 1.3950726985931396]
 
 base_config: trainer-replica.yaml
-exp_name: replica-octree-residual2
+exp_name: replica-residualwithprior-room2
 data:
     dataset_args:
-        data_path: "data/replica/room0"
+        data_path: "data/replica/room2"

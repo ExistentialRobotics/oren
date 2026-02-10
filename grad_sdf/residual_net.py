@@ -27,7 +27,7 @@ class ResidualNet(nn.Module):
         self.bound_min = cfg.bound_min
         self.bound_max = cfg.bound_max
         self.residual_net = tcnn.Network(
-            n_input_dims=cfg.input_feature_dim + 3,
+            n_input_dims=cfg.input_feature_dim + 1,
             n_output_dims=1,
             network_config={
                 "otype": "FullyFusedMLP",

@@ -26,8 +26,8 @@ class Trainer:
         self.setup_seed(self.cfg.seed)
 
         self.data_stream = get_dataset(cfg.data.dataset_name, cfg.data.dataset_args)
-        self.cfg.data.dataset_args["bound_min"] = self.data_stream.bound_min
-        self.cfg.data.dataset_args["bound_max"] = self.data_stream.bound_max
+        # self.cfg.data.dataset_args["bound_min"] = self.data_stream.bound_min
+        # self.cfg.data.dataset_args["bound_max"] = self.data_stream.bound_max
         self.cfg.model.residual_net_cfg.bound_min = self.data_stream.bound_min - 0.15
         self.cfg.model.residual_net_cfg.bound_max = self.data_stream.bound_max + 0.15
 
