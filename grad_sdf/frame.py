@@ -108,7 +108,7 @@ class DepthFrame(Frame):
         if to_world_frame:
             pose = self.get_ref_pose().to(device)
             points = points @ pose[:3, :3].T + pose[:3, 3]  # to world coordinates
-            print(f"points_min: {points.reshape(-1, 3).min(dim=0)}, points_max: {points.reshape(-1, 3).max(dim=0)}")
+            # print(f"points_min: {points.reshape(-1, 3).min(dim=0)}, points_max: {points.reshape(-1, 3).max(dim=0)}")
         return points
 
     def get_rays_direction(self):

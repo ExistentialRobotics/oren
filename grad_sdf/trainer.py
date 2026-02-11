@@ -27,15 +27,15 @@ class Trainer:
         dataset_args = self.cfg.data.dataset_args
         bound_min = dataset_args['bound_min']
         bound_max = dataset_args['bound_max']
-        self.cfg.model.residual_net_cfg.bound_min = [x - 0.15 for x in bound_min]
-        self.cfg.model.residual_net_cfg.bound_max = [x + 0.15 for x in bound_max]
+        self.cfg.model.residual_net_cfg.bound_min = [x - 0.3 for x in bound_min]
+        self.cfg.model.residual_net_cfg.bound_max = [x + 0.3 for x in bound_max]
 
         self.key_frame_set = KeyFrameSet(
             cfg=self.cfg.key_frame_set,
             max_num_voxels=self.cfg.model.octree_cfg.init_voxel_num,
             device=self.cfg.device,
         )
-        self.model = SdfNetwork(cfg.model)
+        self.model = SdfNetwork(self.cfg.model)
         self.model.to(self.cfg.device)
 
         self.logger = BasicLogger(cfg.log_dir, cfg.exp_name, cfg.as_dict())
@@ -172,24 +172,25 @@ class Trainer:
                 voxel_indices_plus = self.find_voxel_indices(offset_points_plus)  # (n, m, 3)
                 voxel_indices_minus = self.find_voxel_indices(offset_points_minus)  # (n, m, 3)
         with self.timer_find_voxel_indices_sampled_xyz:
-            if frame.stamp == 499:
-                print(f"frame.stamp: {frame.stamp}")
-                print(f"self.samples.sampled_xyz.shape: {self.samples.sampled_xyz.shape}")
-                print(f"self.samples.sampled_xyz.min(): {self.samples.sampled_xyz.min()}")
-                print(f"self.samples.sampled_xyz.max(): {self.samples.sampled_xyz.max()}")
+            # if frame.stamp == 499:
+            #     print(f"frame.stamp: {frame.stamp}")
+            #     print(f"self.samples.sampled_xyz.shape: {self.samples.sampled_xyz.shape}")
+            #     print(f"self.samples.sampled_xyz.min(): {self.samples.sampled_xyz.min()}")
+            #     print(f"self.samples.sampled_xyz.max(): {self.samples.sampled_xyz.max()}")
             voxel_indices = self.find_voxel_indices(self.samples.sampled_xyz)  # (n, m)
+            assert voxel_indices.min() != -1, "voxel_indices has -1"
 
-        # 打印voxel_indices的统计信息
-        num_total = voxel_indices.numel()
-        num_ge0 = (voxel_indices >= 0).sum().item()
-        ratio_ge0 = num_ge0 / num_total if num_total > 0 else 0.0
+        # # 打印voxel_indices的统计信息
+        # num_total = voxel_indices.numel()
+        # num_ge0 = (voxel_indices >= 0).sum().item()
+        # ratio_ge0 = num_ge0 / num_total if num_total > 0 else 0.0
 
-        print(
-            "\n" f"voxel_indices.shape: {voxel_indices.shape}",
-            f"voxel_indices.min(): {voxel_indices.min()}",
-            f"voxel_indices.max(): {voxel_indices.max()}",
-            f"ratio of indices >= 0: {ratio_ge0:.4f}",
-        )
+        # print(
+        #     "\n" f"voxel_indices.shape: {voxel_indices.shape}",
+        #     f"voxel_indices.min(): {voxel_indices.min()}",
+        #     f"voxel_indices.max(): {voxel_indices.max()}",
+        #     f"ratio of indices >= 0: {ratio_ge0:.4f}",
+        # )
 
         bs = int(self.cfg.batch_size / self.samples.sampled_xyz.shape[1])
 

@@ -10,7 +10,7 @@ data:
         min_depth: 0.5
         max_depth: 10.0
         offset: [0.0, 0.0, 0.0]
-        bound_min: [-4, -3, -0.05]   #[-5.039750, -67.999489, -1.374881]
+        bound_min: [-4, -3, 0.0]  
         bound_max: [4, 3, 2.3]
 key_frame_set:
     identifier: grad_sdf.key_frame_set.KeyFrameSetConfig
@@ -24,17 +24,17 @@ model:
     identifier: grad_sdf.model.SdfNetworkConfig
     octree_cfg:
         identifier: grad_sdf.octree_config.OctreeConfig
-        resolution: 0.05
-        tree_depth: 8 # 0.1*2^8=25.6m
-        semi_sparse_depth: 5
-        init_voxel_num: 500000
-        insertion_threshold: 20
+        resolution: 0.1
+        tree_depth: 7 # 0.1*2^8=25.6m
+        semi_sparse_depth: 4
+        init_voxel_num: 200000
+        insertion_threshold: 3
         skip_insertion_if_exists: true # speed up a bit
         gradient_augmentation: true
     residual_net_cfg:
         identifier: grad_sdf.residual_net.ResidualNetConfig
-        bound_min: [-4, -3, -0.05]   #[-5.039750, -67.999489, -1.374881]
-        bound_max: [4, 3, 2.3]    #[55.448833, -1.806183, 26.161722]
+        bound_min: [-5, -4, 0.0]  
+        bound_max: [5, 4, 2.3]   
         resolution: 0.1
         num_levels: 4
         feature_dims: 2

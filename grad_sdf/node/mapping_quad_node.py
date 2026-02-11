@@ -56,11 +56,17 @@ class GradSDFMappingNode(Node):
         self.cfg = cfg
         self.device = self.cfg.device
 
-        self.cam_intrinsic = torch.tensor([
-            [422.275665283, 0.0, 424.278106689],
-            [0.0, 422.275665283, 239.115410766],
-            [0.0, 0.0, 1.0]
-        ])
+        # From provided camera info:
+        # width: 212, height: 120
+        # distortion_model: '', d: [] (no distortion)
+        self.cam_intrinsic = torch.tensor(
+            [
+                [107.36961364746094, 0.0, 107.31482696533203],
+                [0.0, 107.36961364746094, 60.82715606689453],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=torch.float32,
+        )
         self.bound_min = torch.tensor(cfg.data.dataset_args['bound_min'])
         self.bound_max = torch.tensor(cfg.data.dataset_args['bound_max'])
         self.scene_offset = torch.tensor(cfg.data.dataset_args['offset'])
@@ -117,6 +123,9 @@ class GradSDFMappingNode(Node):
             self.last_pc_time = self.get_clock().now()
 
             depth_time = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
+            if depth_time > 158:
+                self.get_logger().info(f'Depth image timestamp: {depth_time:.6f} is greater than 158')
+                return
             self.get_logger().info(f'Depth image timestamp: {depth_time:.6f}')
 
             # Convert ROS Image to numpy array
@@ -130,7 +139,7 @@ class GradSDFMappingNode(Node):
             self.latest_depth = depth_tensor
             self.latest_depth_time = depth_time
 
-            self.get_logger().info(f'Depth image shape: {depth_tensor.shape}, range: [{depth_tensor.min():.2f}, {depth_tensor.max():.2f}]')
+            # self.get_logger().info(f'Depth image shape: {depth_tensor.shape}, range: [{depth_tensor.min():.2f}, {depth_tensor.max():.2f}]')
 
             # Try to process frame if pose is available
             self.try_process_synced_frame()
@@ -145,6 +154,9 @@ class GradSDFMappingNode(Node):
         try:
             # Update last received pose time
             pose_time = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
+            if pose_time > 158:
+                self.get_logger().info(f'Pose timestamp: {pose_time:.6f} is greater than 158')
+                return
             self.get_logger().info(f'Pose timestamp: {pose_time:.6f}')
 
             # Extract position
@@ -221,6 +233,12 @@ class GradSDFMappingNode(Node):
         """
         self.frame_count += 1
         self.get_logger().info(f'Processing frame {self.frame_count}...')
+        # Check pose position is in bounds for each coordinate. Avoid ambiguous tensor comparison.
+        pos_vec = pose[:3, 3]
+        out_of_bound = ((pos_vec < self.bound_min) | (pos_vec > self.bound_max)).any()
+        if out_of_bound:
+            self.get_logger().warn(f'Pose position: {pos_vec} is out of bound, skipping frame {self.frame_count}')
+            return
 
         # Create LiDARFrame with points in sensor frame and pose
         frame = DepthFrame(
@@ -234,19 +252,31 @@ class GradSDFMappingNode(Node):
 
         # Get points in world frame
         points_world = frame.get_points(to_world_frame=True, device=self.cfg.device)
+        if points_world.numel() == 0 or points_world.shape[0] == 0:
+            self.get_logger().warn(
+                f'Frame {self.frame_count}: no valid points after filtering/bounds; skipping octree insert/train.'
+            )
+            return
 
-        self.points_trained = torch.cat([self.points_trained, points_world[::100, :].to('cpu')], dim=0)
+        self.get_logger().info(
+            f'points_min: {points_world.min(dim=0).values}, points_max: {points_world.max(dim=0).values}'
+        )
 
         # Insert points into octree (using Trainer's method)
         _, seen_voxels = self.trainer.insert_points_to_octree(points_world)
 
-        # Update key frame set (using Trainer's method)
-        is_key_frame = self.trainer.update_key_frame_set(frame, seen_voxels)
-        if is_key_frame:
-            self.get_logger().info(f'Frame {self.frame_count} is selected as a key frame.')
+        if seen_voxels.numel() != 0 or seen_voxels.shape[0] != 0:
+            # Update key frame set (using Trainer's method)
+            is_key_frame = self.trainer.update_key_frame_set(frame, seen_voxels)
+            if is_key_frame:
+                self.get_logger().info(f'Frame {self.frame_count} is selected as a key frame.')
+            self.trainer.train_with_frame(frame)
+            self.trainer.epoch += 1
 
-        self.trainer.train_with_frame(frame)
-        self.trainer.epoch += 1
+            self.points_trained = torch.cat((self.points_trained, points_world[::100, :].to('cpu')), dim=0)
+        else:
+            self.get_logger().warn(f'Frame {self.frame_count}: no valid voxels after insertion; skipping train.')
+
 
     def check_no_data_timeout(self):
         """
