@@ -117,7 +117,8 @@ class GradSdfEvaluator(EvaluatorBase):
             j = min(i + bs, points.shape[0])
             points_batch = points[i:j].to(self.device)
             points_batch.requires_grad_(auto_grad)
-            voxel_indices_batch, sdf_prior_batch, sdf_residual_batch, sdf_pred_batch = model(points_batch)
+            voxel_indices_batch, sdf_prior_batch, sdf_residual_batch, _ = model(points_batch)
+            sdf_pred_batch = sdf_prior_batch + sdf_residual_batch
 
             if get_grad:
                 if auto_grad:

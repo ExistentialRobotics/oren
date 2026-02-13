@@ -14,6 +14,8 @@ class ResidualNetConfig(ConfigABC):
     hidden_dims: int = 64  # number of hidden dimensions
     n_hidden_layers: int = 5  # number of hidden layers
     output_sdf_scale: float = 0.1  # scale the output SDF
+    bound_min: list[float] = None
+    bound_max: list[float] = None
 
 
 class ResidualNet(nn.Module):

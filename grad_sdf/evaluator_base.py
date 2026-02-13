@@ -68,40 +68,61 @@ class EvaluatorBase:
         grad_method: str = "autograd",
         eps: float = 0.001,
     ):
-        grid_points = np.load(os.path.join(test_set_dir, "grid_points.npy"))
-        gt_sdf_values = np.load(os.path.join(test_set_dir, "gt_sdf_values.npy"))
-        gt_sdf_grad = np.load(os.path.join(test_set_dir, "gt_sdf_grad.npy"))
+        """计算 SDF 和梯度指标"""
 
-        grid_points = torch.from_numpy(grid_points).float()
-        gt_sdf_values = torch.from_numpy(gt_sdf_values).float().to(self.device)
-        gt_sdf_grad = torch.from_numpy(gt_sdf_grad).float().to(self.device)
+        # 辅助函数：加载数据
+        def load_data(prefix: str):
+            points = torch.from_numpy(np.load(os.path.join(test_set_dir, f"{prefix}.npy"))).float().to(self.device)
+
+            gt_sdf = (
+                torch.from_numpy(
+                    np.load(os.path.join(test_set_dir, f"gt_sdf_values_{prefix.replace('points_', '')}.npy"))
+                )
+                .float()
+                .to(self.device)
+            )
+
+            gt_grad = (
+                torch.from_numpy(np.load(os.path.join(test_set_dir, f"grad_gt_{prefix.replace('points_', '')}.npy")))
+                .float()
+                .to(self.device)
+            )
+
+            return points, gt_sdf, gt_grad
+
+        # 加载三组数据
+        data_sets = {}
+        for name, prefix in [
+            ("for_eval", "points_for_eval"),
+            ("near_surface", "points_near_surface"),
+            ("far_surface", "points_far_surface"),
+        ]:
+            try:
+                data_sets[name] = load_data(prefix)
+            except FileNotFoundError as e:
+                print(f"Warning: Could not load data for {name}: {e}")
+                continue
 
         autograd = grad_method == "autograd"
         self.model.eval()
-        result = self.model_forward_func(self.model, grid_points, True, autograd, eps, None)
 
-        near_surface_mask = np.load(os.path.join(test_set_dir, "mask_near_surface.npy"))
-        far_away_mask = np.load(os.path.join(test_set_dir, "mask_far_surface.npy"))
-        all_mask = near_surface_mask | far_away_mask
+        # 计算指标
+        sdf_metrics = {}
+        grad_metrics = {}
 
-        sdf_metrics = dict(
-            near_surface={
-                k: self._sdf_metrics(result[k][near_surface_mask], gt_sdf_values[near_surface_mask]) for k in sdf_fields
-            },
-            far_away={k: self._sdf_metrics(result[k][far_away_mask], gt_sdf_values[far_away_mask]) for k in sdf_fields},
-            all={k: self._sdf_metrics(result[k][all_mask], gt_sdf_values[all_mask]) for k in sdf_fields},
-        )
+        for name, (points, gt_sdf, gt_grad) in data_sets.items():
+            result = self.model_forward_func(self.model, points, True, autograd, eps, None)
 
-        grad_metrics = dict(
-            near_surface={
-                k: self._grad_metrics(result["grad"][k][near_surface_mask], gt_sdf_grad[near_surface_mask])
-                for k in sdf_fields
-            },
-            far_away={
-                k: self._grad_metrics(result["grad"][k][far_away_mask], gt_sdf_grad[far_away_mask]) for k in sdf_fields
-            },
-            all={k: self._grad_metrics(result["grad"][k][all_mask], gt_sdf_grad[all_mask]) for k in sdf_fields},
-        )
+            # 计算 SDF 指标
+            sdf_metrics[name] = {k: self._sdf_metrics(result[k], gt_sdf) for k in sdf_fields if k in result}
+
+            # 计算梯度指标（添加键存在检查）
+            if "grad" in result:
+                grad_metrics[name] = {
+                    k: self._grad_metrics(result["grad"][k], gt_grad) for k in sdf_fields if k in result["grad"]
+                }
+            else:
+                grad_metrics[name] = {}
 
         return dict(sdf_metrics=sdf_metrics, grad_metrics=grad_metrics)
 

@@ -32,7 +32,7 @@ model:
         init_voxel_num: 200000
         insertion_threshold: 1
         skip_insertion_if_exists: true # speed up a bit
-        residual_feature_dim: 2
+        residual_feature_dim: 4
         residual_num_levels: 1
         # gradient_augmentation: true
     residual_net_cfg:
@@ -42,14 +42,16 @@ model:
         hidden_dims: 64
         n_hidden_layers: 2
         output_sdf_scale: 0.05
+        bound_min: [0.0, 0.0, 0.0]
+        bound_max: [0.0, 0.0, 0.0]
 criterion:
     identifier: grad_sdf.criterion.CriterionConfig
     boundary_loss_weight: 1000
-    perturbation_loss_weight: 0
+    perturbation_loss_weight: 200
     eikonal_loss_surface_weight: 3
-    eikonal_loss_perturbation_weight: 0
-    eikonal_loss_space_weight: 0
-    projection_loss_weight: 0
+    eikonal_loss_perturbation_weight: 2
+    eikonal_loss_space_weight: 10
+    projection_loss_weight: 100
     boundary_loss_prior_weight: 1000
     perturbation_loss_prior_weight: 200
     eikonal_loss_surface_prior_weight: 3
