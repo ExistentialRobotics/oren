@@ -95,4 +95,4 @@ def ga_trilinear(
 
     p = (points - voxel_centers) / (voxel_sizes * resolution) + 0.5  # (n_points, 3)
     results = trilinear_interpolation(p, per_point_vertex_values, little_endian=little_endian)  # (n_points,)
-    return results
+    return results, p

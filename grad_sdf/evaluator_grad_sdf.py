@@ -2,9 +2,11 @@ import os
 from typing import Callable, Dict, Optional
 
 import pandas as pd
+import torch
+import numpy as np
+import open3d as o3d
 from tqdm import tqdm
 
-from grad_sdf import np, o3d, torch
 from grad_sdf.evaluator_base import EvaluatorBase
 from grad_sdf.model import SdfNetwork, SdfNetworkConfig
 from grad_sdf.utils.dict_util import flatten_dict
@@ -115,7 +117,8 @@ class GradSdfEvaluator(EvaluatorBase):
             j = min(i + bs, points.shape[0])
             points_batch = points[i:j].to(self.device)
             points_batch.requires_grad_(auto_grad)
-            voxel_indices_batch, sdf_prior_batch, sdf_residual_batch, sdf_pred_batch = model(points_batch)
+            voxel_indices_batch, sdf_prior_batch, sdf_residual_batch, _ = model(points_batch)
+            sdf_pred_batch = sdf_prior_batch + sdf_residual_batch
 
             if get_grad:
                 if auto_grad:
@@ -268,9 +271,9 @@ def main():
         bound_min = args.bound_min
         bound_max = args.bound_max
         if bound_min is None:
-            bound_min = trainer_cfg.model.residual_net_cfg.bound_min
+            bound_min = trainer_cfg.data.dataset_args["bound_min"] - 0.15
         if bound_max is None:
-            bound_max = trainer_cfg.model.residual_net_cfg.bound_max
+            bound_max = trainer_cfg.data.dataset_args["bound_max"] + 0.15
         results = evaluator.extract_sdf_grid(
             bound_min=bound_min,
             bound_max=bound_max,
@@ -289,9 +292,9 @@ def main():
         bound_min = args.bound_min
         bound_max = args.bound_max
         if bound_min is None:
-            bound_min = trainer_cfg.model.residual_net_cfg.bound_min
+            bound_min = trainer_cfg.data.dataset_args["bound_min"] - 0.15
         if bound_max is None:
-            bound_max = trainer_cfg.model.residual_net_cfg.bound_max
+            bound_max = trainer_cfg.data.dataset_args["bound_max"] + 0.15
         meshes = evaluator.extract_mesh(
             bound_min=bound_min,
             bound_max=bound_max,

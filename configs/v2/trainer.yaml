@@ -10,7 +10,7 @@ data:
         min_depth: 0.5
         max_depth: 10.0
         offset: [0.0, 0.0, 0.0]
-        bound_min: [-4, -3, 0.0]  
+        bound_min: [-4, -3, 0.0]
         bound_max: [4, 3, 2.3]
 key_frame_set:
     identifier: grad_sdf.key_frame_set.KeyFrameSetConfig
@@ -30,11 +30,12 @@ model:
         init_voxel_num: 200000
         insertion_threshold: 3
         skip_insertion_if_exists: true # speed up a bit
-        gradient_augmentation: true
+        residual_feature_dim: 8
+        # gradient_augmentation: true
     residual_net_cfg:
         identifier: grad_sdf.residual_net.ResidualNetConfig
-        bound_min: [-5, -4, 0.0]  
-        bound_max: [5, 4, 2.3]   
+        bound_min: [-5, -4, 0.0]
+        bound_max: [5, 4, 2.3]
         resolution: 0.1
         num_levels: 4
         feature_dims: 2
@@ -47,14 +48,22 @@ model:
         output_sdf_scale: 0.1
 criterion:
     identifier: grad_sdf.criterion.CriterionConfig
-    boundary_loss_weight: 1000
+    boundary_loss_weight: 500
+    perturbation_loss_weight: 0
+    eikonal_loss_surface_weight: 500
+    eikonal_loss_perturbation_weight: 0
+    eikonal_loss_space_weight: 0
+    projection_loss_weight: 0
+
+    boundary_loss_prior_weight: 100
+    perturbation_loss_prior_weight: 100
+    eikonal_loss_surface_prior_weight: 100
+    eikonal_loss_perturbation_prior_weight: 50
+    eikonal_loss_space_prior_weight: 100
+    projection_loss_prior_weight: 100
     boundary_loss_type: L1
-    perturbation_loss_weight: 100
     perturbation_loss_type: L1
-    eikonal_loss_surface_weight: 30
-    eikonal_loss_space_weight: 100
     eikonal_loss_type: L1
-    projection_loss_weight: 100
     projection_loss_type: L1
     heat_loss_weight: 0.0
     heat_loss_lambda: 4.0

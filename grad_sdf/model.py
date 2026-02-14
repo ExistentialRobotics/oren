@@ -22,6 +22,9 @@ class SdfNetwork(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.octree: SemiSparseOctree = SemiSparseOctree(cfg.octree_cfg)
+        cfg.residual_net_cfg.input_feature_dim = (
+            cfg.octree_cfg.residual_feature_dim * cfg.octree_cfg.residual_num_levels
+        )
         self.residual: ResidualNet = ResidualNet(cfg.residual_net_cfg)
 
     def forward(self, points: torch.Tensor, voxel_indices: torch.Tensor = None):
@@ -41,14 +44,18 @@ class SdfNetwork(nn.Module):
         points = points.view(-1, 3)
         if voxel_indices is not None:
             voxel_indices = voxel_indices.view(-1)
-        sdf_prior, voxel_indices = self.octree(points, voxel_indices)
-        sdf_residual = self.residual(points)
+        sdf_prior, prior_features, residual_features, voxel_indices = self.octree(points, voxel_indices)
+        # bound_min = torch.tensor(self.residual.bound_min, device=points.device)
+        # bound_max = torch.tensor(self.residual.bound_max, device=points.device)
+        # points_normalized = (points - bound_min) / (bound_max - bound_min) * 2 - 1
+        residual_network_input = torch.cat([prior_features.detach(), residual_features], dim=-1)
+        sdf_residual = self.residual(residual_network_input)
 
         sdf_prior = sdf_prior.view(shape[:-1])
         sdf_residual = sdf_residual.view(shape[:-1])
         voxel_indices = voxel_indices.view(shape[:-1])
 
-        return voxel_indices, sdf_prior, sdf_residual, sdf_prior + sdf_residual
+        return voxel_indices, sdf_prior, sdf_residual, sdf_prior.detach() + sdf_residual
 
     @torch.no_grad()
     def grid_vertex_filter(
