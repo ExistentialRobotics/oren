@@ -41,6 +41,8 @@ class DepthFrame(Frame):
         intrinsic: torch.Tensor,
         offset: torch.Tensor,
         ref_pose: torch.Tensor,
+        max_depth: float,
+        min_depth: float,
     ) -> None:
         """
         Args:
@@ -49,6 +51,8 @@ class DepthFrame(Frame):
             intrinsic: (3, 3) intrinsic matrix
             offset: (3, ) offset to be added to the translation of ref_pose
             ref_pose: (4, 4) reference pose in world coordinates
+            max_depth: float, max depth in meter
+            min_depth: float, min depth in meter
         """
         super().__init__()
         self.stamp = fid
@@ -68,7 +72,7 @@ class DepthFrame(Frame):
 
         self.rays_d: torch.Tensor = self.get_rays(K=self.K)  # (H, W, 3) in camera coordinates
         self.points: torch.Tensor = self.rays_d * self.depth[..., None]  # (H, W, 3) in camera coordinates
-        self.valid_mask: torch.Tensor = self.depth > 0  # (H, W) depth > 0
+        self.valid_mask: torch.Tensor = (self.depth > min_depth) & (self.depth < max_depth)  # (H, W) depth > 0
 
     def get_frame_index(self):
         return self.stamp

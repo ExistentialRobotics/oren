@@ -1,7 +1,0 @@
-base_config: trainer.yaml
-ros:
-    identifier: grad_sdf.node.ros_confg.RosConfig
-    depth_topic: '/quad/depth_img'
-    pose_topic: '/quad/pose'
-    max_pose_age_sec: 0.1
-    no_data_timeout_sec: 20.0

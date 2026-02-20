@@ -61,8 +61,8 @@ class GradSDFMappingNode(Node):
         # distortion_model: '', d: [] (no distortion)
         self.cam_intrinsic = torch.tensor(
             [
-                [107.36961364746094, 0.0, 107.31482696533203],
-                [0.0, 107.36961364746094, 60.82715606689453],
+                [429.47845458984375, 0.0, 429.2593078613281],
+                [0.0, 429.47845458984375, 243.30862426757812],
                 [0.0, 0.0, 1.0],
             ],
             dtype=torch.float32,
@@ -107,7 +107,7 @@ class GradSDFMappingNode(Node):
         self.latest_pose = None
         self.latest_depth_time = None
         self.latest_pose_time = None
-        self.sync_tolerance = 0.05  # 50ms tolerance for synchronization
+        self.sync_tolerance = 0.01  # 50ms tolerance for synchronization
 
         self.get_logger().info('Node initialization complete, waiting for point cloud messages...')
 
@@ -123,9 +123,9 @@ class GradSDFMappingNode(Node):
             self.last_pc_time = self.get_clock().now()
 
             depth_time = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
-            if depth_time > 158:
-                self.get_logger().info(f'Depth image timestamp: {depth_time:.6f} is greater than 158')
-                return
+            # if depth_time > 158:
+            #     self.get_logger().info(f'Depth image timestamp: {depth_time:.6f} is greater than 158')
+            #     return
             self.get_logger().info(f'Depth image timestamp: {depth_time:.6f}')
 
             # Convert ROS Image to numpy array
@@ -154,9 +154,9 @@ class GradSDFMappingNode(Node):
         try:
             # Update last received pose time
             pose_time = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
-            if pose_time > 158:
-                self.get_logger().info(f'Pose timestamp: {pose_time:.6f} is greater than 158')
-                return
+            # if pose_time > 158:
+            #     self.get_logger().info(f'Pose timestamp: {pose_time:.6f} is greater than 158')
+            #     return
             self.get_logger().info(f'Pose timestamp: {pose_time:.6f}')
 
             # Extract position
@@ -247,6 +247,8 @@ class GradSDFMappingNode(Node):
             intrinsic=self.cam_intrinsic,
             offset=self.scene_offset,
             ref_pose=pose,
+            max_depth=self.cfg.data.dataset_args['max_depth'],
+            min_depth=self.cfg.data.dataset_args['min_depth'],
         )
         frame.apply_bound(self.bound_min, self.bound_max)
 
