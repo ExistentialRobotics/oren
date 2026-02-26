@@ -133,8 +133,8 @@ class GradSdfEvaluator(EvaluatorBase):
                         create_graph=True,
                         allow_unused=True,
                     )[0]
-                    sdf_prior_grad.append(sdf_grad_batch.detach().cpu())
-                    sdf_grad.append(sdf_prior_grad_batch.detach().cpu())
+                    sdf_prior_grad.append(sdf_prior_grad_batch.detach().cpu())
+                    sdf_grad.append(sdf_grad_batch.detach().cpu())
                 else:
                     sdf_grad_batch = torch.empty_like(points_batch)
                     sdf_prior_grad_batch = torch.empty_like(points_batch)
