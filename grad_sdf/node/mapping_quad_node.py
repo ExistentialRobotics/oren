@@ -29,7 +29,7 @@ grad_sdf_path = str(Path(__file__).resolve().parents[2])
 sys.path.insert(0, grad_sdf_path)
 
 from grad_sdf.trainer_config import TrainerConfig
-from grad_sdf.trainer import Trainer
+from grad_sdf.trainer_ros import Trainer_ros
 from grad_sdf.frame import DepthFrame
 
 
@@ -73,7 +73,7 @@ class GradSDFMappingNode(Node):
 
         # Initialize trainer
         self.get_logger().info('Initializing grad-SDF model...')
-        self.trainer = Trainer(self.cfg)
+        self.trainer = Trainer_ros(self.cfg)
 
         # Subscribe to point cloud
         qos_profile = QoSProfile(
@@ -253,7 +253,7 @@ class GradSDFMappingNode(Node):
             device=self.cfg.device,
         )
         with self.trainer.timer_apply_bound:
-            frame.apply_bound(self.bound_min, self.bound_max)
+            frame.project_to_bound(self.bound_min, self.bound_max)
 
         # Get points in world frame
         points_world = frame.get_points(to_world_frame=True, device=self.cfg.device)

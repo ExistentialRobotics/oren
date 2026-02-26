@@ -1,4 +1,5 @@
 import torch
+from typing import Optional
 
 
 class Frame:
@@ -41,8 +42,8 @@ class DepthFrame(Frame):
         intrinsic: torch.Tensor,
         offset: torch.Tensor,
         ref_pose: torch.Tensor,
-        max_depth: float,
-        min_depth: float,
+        max_depth: Optional[float] = None,
+        min_depth: Optional[float] = None,
         device: str = None,
     ) -> None:
         """
@@ -73,7 +74,10 @@ class DepthFrame(Frame):
 
         self.rays_d: torch.Tensor = self.get_rays(K=self.K)  # (H, W, 3) in camera coordinates
         self.points: torch.Tensor = self.rays_d * self.depth[..., None]  # (H, W, 3) in camera coordinates
-        self.valid_mask: torch.Tensor = (self.depth > min_depth) & (self.depth < max_depth)  # (H, W) depth > 0
+        if min_depth is not None and max_depth is not None:
+            self.valid_mask: torch.Tensor = (self.depth > min_depth) & (self.depth < max_depth)  # (H, W) depth > 0
+        else:
+            self.valid_mask: torch.Tensor = self.depth > 0  # (H, W) depth > 0
 
         if device is not None:
             self.depth = self.depth.to(device)
@@ -131,7 +135,7 @@ class DepthFrame(Frame):
         return self.valid_mask
 
     @torch.no_grad()
-    def apply_bound(self, bound_min: torch.Tensor, bound_max: torch.Tensor):
+    def project_to_bound(self, bound_min: torch.Tensor, bound_max: torch.Tensor):
         """Applies a bounding box constraint to points in the frame.
 
         Any points in camera coordinates that, when transformed to world coordinates,
@@ -184,18 +188,18 @@ class DepthFrame(Frame):
         self.points[full_mask] = projected_cam
         self.depth[full_mask] = projected_cam[:, 2]
 
-    # def apply_bound(self, bound_min: torch.Tensor, bound_max: torch.Tensor):
-    #     points = self.points @ self.ref_pose[:3, :3].T + self.ref_pose[:3, 3]
-    #     mask = points >= bound_min.view(1, 1, 3)
-    #     mask = mask & (points <= bound_max.view(1, 1, 3))
-    #     mask = mask.all(dim=-1)
-    #     if mask.any():
-    #         # We want the min/max across the H and W dimensions, not the channel dim
-    #         # Use .view(-1, 3) to flatten spatial dims for easy min/max calculation
-    #         actual_min = points.view(-1, 3).min(dim=0)[0]
-    #         actual_max = points.view(-1, 3).max(dim=0)[0]
-    #         print(f'Actual Point Bounds - Min: {actual_min}, Max: {actual_max}')
-    #     self.valid_mask = self.valid_mask & mask
+    def apply_bound(self, bound_min: torch.Tensor, bound_max: torch.Tensor):
+        points = self.points @ self.ref_pose[:3, :3].T + self.ref_pose[:3, 3]
+        mask = points >= bound_min.view(1, 1, 3)
+        mask = mask & (points <= bound_max.view(1, 1, 3))
+        mask = mask.all(dim=-1)
+        if mask.any():
+            # We want the min/max across the H and W dimensions, not the channel dim
+            # Use .view(-1, 3) to flatten spatial dims for easy min/max calculation
+            actual_min = points.view(-1, 3).min(dim=0)[0]
+            actual_max = points.view(-1, 3).max(dim=0)[0]
+            print(f'Actual Point Bounds - Min: {actual_min}, Max: {actual_max}')
+        self.valid_mask = self.valid_mask & mask
 
     def sample_points(
         self,

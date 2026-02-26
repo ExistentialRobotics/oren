@@ -24,7 +24,7 @@ grad_sdf_path = str(Path(__file__).resolve().parents[4])
 sys.path.insert(0, grad_sdf_path)
 
 from grad_sdf.trainer_config import TrainerConfig
-from grad_sdf.trainer import Trainer
+from grad_sdf.trainer_ros import Trainer_ros
 from grad_sdf.frame import LiDARFrame
 
 

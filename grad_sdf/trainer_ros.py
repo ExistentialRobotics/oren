@@ -9,7 +9,6 @@ from grad_sdf.criterion import Criterion
 from grad_sdf.evaluator_grad_sdf import GradSdfEvaluator
 from grad_sdf.frame import Frame
 from grad_sdf.key_frame_set import KeyFrameSet
-from grad_sdf.utils.import_util import get_dataset
 from grad_sdf.loggers import BasicLogger
 from grad_sdf.model import SdfNetwork
 from grad_sdf.trainer_config import TrainerConfig
@@ -18,23 +17,17 @@ from grad_sdf.utils.sampling import SampleResults, generate_sdf_samples
 from tqdm import tqdm
 
 
-class Trainer:
+class Trainer_ros:
     def __init__(self, cfg: TrainerConfig):
         self.cfg = cfg
 
         self.setup_seed(self.cfg.seed)
 
-        self.data_stream = get_dataset(cfg.data.dataset_name, cfg.data.dataset_args)
-
-        # set the bound automatically
-        self.cfg.model.residual_net_cfg.bound_min = (self.data_stream.bound_min - 0.15).cpu().tolist()
-        self.cfg.model.residual_net_cfg.bound_max = (self.data_stream.bound_max + 0.15).cpu().tolist()
-
-        if self.cfg.data.end_frame < 0:
-            self.cfg.data.end_frame = len(self.data_stream)
-        self.cfg.data.start_frame = min(self.cfg.data.start_frame, len(self.data_stream) - 1)
-        self.cfg.data.end_frame = min(self.cfg.data.end_frame, len(self.data_stream))
-        self.current_frame_idx = self.cfg.data.start_frame
+        dataset_args = self.cfg.data.dataset_args
+        bound_min = dataset_args["bound_min"]
+        bound_max = dataset_args["bound_max"]
+        self.cfg.model.residual_net_cfg.bound_min = [x - 0.3 for x in bound_min]
+        self.cfg.model.residual_net_cfg.bound_max = [x + 0.3 for x in bound_max]
 
         self.key_frame_set = KeyFrameSet(
             cfg=self.cfg.key_frame_set,
@@ -47,7 +40,8 @@ class Trainer:
         self.logger = BasicLogger(cfg.log_dir, cfg.exp_name, cfg.as_dict())
 
         # Handle offset whether in dataset_args or directly in data
-        self.scene_offset = torch.tensor(self.cfg.data.offset)
+        offset = dataset_args["offset"]
+        self.scene_offset = torch.tensor(offset)
         self.epoch = 0
         self.global_step = 0
         self.num_iterations = 0
@@ -65,6 +59,7 @@ class Trainer:
 
         timer_on = self.cfg.profiling
         verbose = self.cfg.profiling_verbose
+        self.timer_apply_bound = GpuTimer("apply bound", enable=timer_on, verbose=verbose)
         self.timer_octree_insert = GpuTimer("octree insert", enable=timer_on, verbose=verbose)
         self.timer_key_frame_set_update = GpuTimer("key frame set update", enable=timer_on, verbose=verbose)
         self.timer_train_frame = GpuTimer("train with frame", enable=timer_on, verbose=verbose)
@@ -512,7 +507,7 @@ class Trainer:
 def main():
     parser = TrainerConfig.get_argparser()
     cfg: TrainerConfig = parser.parse_args()
-    trainer = Trainer(cfg)
+    trainer = Trainer_ros(cfg)
     trainer.train()
 
 
