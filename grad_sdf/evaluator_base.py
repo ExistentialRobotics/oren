@@ -35,6 +35,9 @@ class EvaluatorBase:
         model_path: str | None = None,
         model_create_func: Callable[[str], torch.nn.Module] | None = None,
         device: str = "cuda",
+        absolute_sdf: bool = True,
+        grad_err_outlier_threshold: float = 0.5,
+        interactive: bool = False,
     ):
         """
         Base class for evaluators.
@@ -45,10 +48,17 @@ class EvaluatorBase:
             model_path: optional, if model is not provided, load the model from this path
             model_create_func: optional, function to create the model, takes model_path as input, returns the model
             device: device to run the model on
+            absolute_sdf: if True, ignore the sign of SDF values when computing metrics, only consider absolute values.
+            This is useful when the ground truth SDF does not have sign information.
+            grad_err_outlier_threshold: threshold to filter out outliers in gradient error computation, in radians
+            interactive: whether to enable interactive visualization (e.g., for gradient angle difference)
         """
         assert model_forward_func is not None
         self.model_forward_func = model_forward_func
         self.device = device
+        self.grad_err_outlier_threshold = grad_err_outlier_threshold
+        self.interactive = interactive
+        self.absolute_sdf = absolute_sdf
 
         if model is not None:
             self.model = model.to(self.device)
@@ -60,19 +70,35 @@ class EvaluatorBase:
             self.model: torch.nn.Module = model_create_func(model_path).to(self.device)
             self.model.eval()
 
-    @staticmethod
-    def _sdf_metrics(sdf_pred: torch.Tensor, sdf_gt: torch.Tensor):
+    def _sdf_metrics(self, sdf_pred: torch.Tensor, sdf_gt: torch.Tensor):
+        if self.absolute_sdf:
+            sdf_pred = sdf_pred.abs()
+            sdf_gt = sdf_gt.abs()
         diff = sdf_pred - sdf_gt
         return dict(mae=diff.abs().mean().item(), rmse=(diff**2).mean().sqrt().item())
 
-    @staticmethod
-    def _grad_metrics(grad_pred: torch.Tensor, grad_gt: torch.Tensor):
+    def _grad_metrics(self, grad_pred: torch.Tensor, grad_gt: torch.Tensor, mask: Optional[torch.Tensor] = None):
         grad_pred /= grad_pred.norm(dim=-1, keepdim=True) + 1e-8
         grad_gt /= grad_gt.norm(dim=-1, keepdim=True) + 1e-8
         cos_sim = (grad_pred * grad_gt).sum(dim=-1)
         cos_sim = torch.clamp(cos_sim, -1.0, 1.0)
         angle_diff = torch.acos(cos_sim)  # in radians
-        return angle_diff.abs().mean().item()
+        if mask is not None:
+            angle_diff = angle_diff[mask]
+
+        if self.interactive:
+            # visualize as histograms
+            plt.figure()
+            plt.hist(angle_diff.cpu().numpy(), bins=50, color="steelblue", edgecolor="black", alpha=0.7)
+            plt.xlabel("Angle Difference (radians)")
+            plt.ylabel("Count")
+            plt.title("Gradient Angle Difference")
+            plt.show()
+
+        angle_diff = angle_diff.abs()
+        mask = angle_diff < self.grad_err_outlier_threshold
+        angle_diff = angle_diff[mask]
+        return angle_diff.mean().item()
 
     def sdf_and_grad_metrics(
         self,
@@ -105,15 +131,74 @@ class EvaluatorBase:
             all={k: self._sdf_metrics(result[k][all_mask], gt_sdf_values[all_mask]) for k in sdf_fields},
         )
 
+        if self.interactive:
+            # visualization of gradient angle difference on the grid as a 2D z-slice
+            grad_pred = result["grad"]["sdf"]
+            grad_gt = gt_sdf_grad
+
+            grad_pred /= grad_pred.norm(dim=-1, keepdim=True) + 1e-8
+            grad_gt /= grad_gt.norm(dim=-1, keepdim=True) + 1e-8
+            cos_sim = (grad_pred * grad_gt).sum(dim=-1)
+            cos_sim = torch.clamp(cos_sim, -1.0, 1.0)
+            angle_diff = torch.acos(cos_sim)  # in radians
+
+            angle_diff = angle_diff.reshape(grid_points.shape[:-1])  # reshape to (nx, ny, nz)
+            mask = (gt_sdf_values > 0) & (result["sdf"] > 0)  # only consider where both gt and pred are positive
+            angle_diff[mask] = 0
+
+            plt.figure()
+            z = 0
+            img = plt.imshow(angle_diff[:, :, z].cpu().numpy(), cmap="viridis")
+            plt.colorbar(label="Gradient Angle Difference (radians)")
+            plt.title(f"Gradient Angle Difference at z={z}")
+            plt.xlabel("X-axis")
+            plt.ylabel("Y-axis")
+
+            def keyboard_event_handler(event):
+                nonlocal z
+                if event.key == "up":
+                    z = min(z + 1, angle_diff.shape[2] - 1)
+                elif event.key == "down":
+                    z = max(z - 1, 0)
+                data = angle_diff[:, :, z].cpu().numpy()
+                img.set_data(data)
+                # update color scale to the new data range
+                img.set_clim(vmin=data.min(), vmax=data.max())
+                plt.title(f"Gradient Angle Difference at z={z}")
+                plt.draw()
+
+            plt.gcf().canvas.mpl_connect("key_press_event", keyboard_event_handler)
+            plt.show()
+
+        # only consider gradients where both g.t. and pred. are positive
+        # because the ground truth might not have sign info
+        positive_mask_gt = gt_sdf_values > 0
+        positive_mask = {k: (result[k] > 0) & positive_mask_gt for k in sdf_fields}
         grad_metrics = dict(
             near_surface={
-                k: self._grad_metrics(result["grad"][k][near_surface_mask], gt_sdf_grad[near_surface_mask])
+                k: self._grad_metrics(
+                    result["grad"][k][near_surface_mask],
+                    gt_sdf_grad[near_surface_mask],
+                    positive_mask[k][near_surface_mask],
+                )
                 for k in sdf_fields
             },
             far_away={
-                k: self._grad_metrics(result["grad"][k][far_away_mask], gt_sdf_grad[far_away_mask]) for k in sdf_fields
+                k: self._grad_metrics(
+                    result["grad"][k][far_away_mask],
+                    gt_sdf_grad[far_away_mask],
+                    positive_mask[k][far_away_mask],
+                )
+                for k in sdf_fields
             },
-            all={k: self._grad_metrics(result["grad"][k][all_mask], gt_sdf_grad[all_mask]) for k in sdf_fields},
+            all={
+                k: self._grad_metrics(
+                    result["grad"][k][all_mask],
+                    gt_sdf_grad[all_mask],
+                    positive_mask[k][all_mask],
+                )
+                for k in sdf_fields
+            },
         )
 
         return dict(sdf_metrics=sdf_metrics, grad_metrics=grad_metrics)
@@ -228,8 +313,6 @@ class EvaluatorBase:
         ax2.legend()
         plt.tight_layout()
         plt.show()
-
-        
 
         completion_ratio = np.mean(dist_gt_to_pred < threshold).item()
         completion = np.mean(dist_gt_to_pred)

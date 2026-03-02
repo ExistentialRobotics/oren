@@ -73,6 +73,11 @@ mesh_rotated = o3d.geometry.TriangleMesh(mesh)
 mesh_rotated.translate(-obb.center)  # shift the mesh to origin first
 mesh_rotated.rotate(R, center=(0, 0, 0))  # then rotate
 
+T_rotated_to_original = np.eye(4)
+T_rotated_to_original[:3, :3] = R.T
+T_rotated_to_original[:3, 3] = obb.center
+np.save(os.path.join(args.output_dir, "T_rotated_to_original.npy"), T_rotated_to_original)
+
 print("transformed mesh bounding box:")
 aabb_transformed = mesh_rotated.get_axis_aligned_bounding_box()
 print("transformed AABB min value:", aabb_transformed.min_bound)

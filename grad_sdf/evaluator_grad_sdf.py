@@ -24,6 +24,9 @@ class GradSdfEvaluator(EvaluatorBase):
         model_path: str | None = None,
         model_input_offset: list[float] = None,
         device: str = "cuda",
+        absolute_sdf: bool = False,
+        grad_err_outlier_threshold: float = 0.5,
+        interactive: bool = False,
     ):
         """
         Args:
@@ -34,6 +37,9 @@ class GradSdfEvaluator(EvaluatorBase):
             model_path: optional, if model is not provided, load the model from this path
             model_input_offset: optional offset to apply to the model input
             device: device to run the model on
+            absolute_sdf: whether to take absolute value of SDF for metrics computation
+            grad_err_outlier_threshold: threshold to filter out outliers in gradient error when computing metrics
+            interactive: whether to run some interactive visualization
         """
         self.batch_size = batch_size
         self.clean_mesh = clean_mesh
@@ -45,7 +51,10 @@ class GradSdfEvaluator(EvaluatorBase):
             model,
             model_path,
             self.create_model,
-            device,
+            device=device,
+            absolute_sdf=absolute_sdf,
+            grad_err_outlier_threshold=grad_err_outlier_threshold,
+            interactive=interactive,
         )
 
         self.model: SdfNetwork
@@ -230,10 +239,12 @@ def main():
     parser.add_argument("--iso-value", type=float, default=0.0)
 
     parser.add_argument("--sdf-and-grad-metrics", action="store_true")
+    parser.add_argument("--absolute-sdf", action="store_true", help="Whether to take absolute value of SDF for metrics computation")
     parser.add_argument("--test-set-dir", type=str, help="Directory of the test set")
     parser.add_argument("--sdf-fields", type=str, nargs="+", default=["sdf", "sdf_prior"])
     parser.add_argument("--grad-method", type=str, default="autograd", choices=["autograd", "finite_difference"])
     parser.add_argument("--finite-difference-eps", type=float, default=0.001)
+    parser.add_argument("--grad-err-outlier-threshold", type=float, default=np.deg2rad(25).item())
 
     parser.add_argument("--mesh-metrics", action="store_true")
     parser.add_argument("--pred-mesh-paths", type=str, nargs="+")
@@ -242,6 +253,7 @@ def main():
     parser.add_argument("--f1-threshold", type=float, default=0.05)
     parser.add_argument("--num-points", type=int, default=200_000)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--interactive", action="store_true")
 
     args = parser.parse_args()
 
@@ -264,6 +276,8 @@ def main():
         # the test data is not offset, so we need to offset the model input
         model_input_offset=offset if args.apply_dataset_offset else None,
         device=args.device,
+        grad_err_outlier_threshold=args.grad_err_outlier_threshold,
+        interactive=args.interactive,
     )
 
     if args.extract_grid:

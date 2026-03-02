@@ -75,7 +75,7 @@ class Criterion(nn.Module):
         pred_prior_grad: torch.Tensor,
         gt_sdf_perturb: torch.Tensor,
         gt_sdf_stratified: torch.Tensor,
-        gaussian_positive_mask: torch.Tensor,
+        positive_perturbation_mask: torch.Tensor,
         perturb_sigma: float,
     ):
         loss = 0
@@ -92,7 +92,7 @@ class Criterion(nn.Module):
         if self.cfg.perturbation_loss_weight > 0:
             perturbation_loss = self.get_perturbation_loss(
                 pred_sdf[:, self.n_stratified : self.n_stratified + self.n_perturbed],
-                gaussian_positive_mask,
+                positive_perturbation_mask,
                 gt_sdf_perturb,
                 perturb_sigma,
             )
@@ -101,7 +101,7 @@ class Criterion(nn.Module):
         if self.cfg.perturbation_loss_prior_weight > 0:
             perturbation_loss_prior = self.get_perturbation_loss(
                 pred_prior[:, self.n_stratified : self.n_stratified + self.n_perturbed],
-                gaussian_positive_mask,
+                positive_perturbation_mask,
                 gt_sdf_perturb,
                 perturb_sigma,
             )
@@ -170,7 +170,7 @@ class Criterion(nn.Module):
     def get_perturbation_loss(
         self,
         pred_sdf_perturb: torch.Tensor,
-        gaussian_positive_mask: torch.Tensor,
+        positive_perturbation_mask: torch.Tensor,
         gt_sdf_perturb: torch.Tensor,
         perturb_sigma: float,
     ):
@@ -178,9 +178,9 @@ class Criterion(nn.Module):
         pred_sdf_perturb = pred_sdf_perturb.clone()
         gt_sdf_perturb = gt_sdf_perturb.clone()
 
-        # Flip sign for positive perturbations (outside surface)
-        pred_sdf_perturb[gaussian_positive_mask] = -pred_sdf_perturb[gaussian_positive_mask]
-        gt_sdf_perturb[gaussian_positive_mask] = -gt_sdf_perturb[gaussian_positive_mask]
+        # Flip sign for positive perturbations (negative SDF values) to unify loss calculation
+        pred_sdf_perturb[positive_perturbation_mask] = -pred_sdf_perturb[positive_perturbation_mask]
+        gt_sdf_perturb[positive_perturbation_mask] = -gt_sdf_perturb[positive_perturbation_mask]
 
         perturb_loss_upperbound = gt_sdf_perturb
         perturb_loss_lowerbound = perturb_sigma * 1.0 * torch.ones_like(gt_sdf_perturb)
