@@ -14,7 +14,7 @@ octree. The buffers store the octree structure:
 from abc import ABC, abstractmethod
 
 from grad_sdf import torch
-from grad_sdf.ga_trilinear import ga_trilinear
+from grad_sdf.ga_trilinear import ga_trilinear, trilinear_interpolation
 from grad_sdf.octree_config import OctreeConfig
 
 
@@ -33,6 +33,12 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
             torch.zeros((self.cfg.init_voxel_num, 3), dtype=torch.float32),
             requires_grad=True,
         )
+
+        if self.cfg.residual_feature_dim > 0:
+            self.residual_features = torch.nn.Parameter(
+                torch.zeros((self.cfg.init_voxel_num, self.cfg.residual_feature_dim), dtype=torch.float32),
+                requires_grad=True,
+            )
 
         self.ever_inserted = False
 
@@ -83,9 +89,11 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
         voxels_raw, counts = torch.unique(voxels, dim=0, return_inverse=False, return_counts=True)
         voxels_valid = voxels_raw[counts > self.cfg.insertion_threshold]  # (n_valid, 3) of grid coordinates
         voxels_unique = torch.unique(voxels_valid, dim=0)  # (n_unique, 3) of grid coordinates
+        if voxels_unique.numel() == 0:
+            return torch.empty((0,), dtype=torch.long, device="cpu"), torch.empty((0,), dtype=torch.long, device="cpu")
         if self.cfg.skip_insertion_if_exists and self.ever_inserted:
             device = self.sdf_priors.device
-            voxel_indices = self.find_voxel_indices(voxels_unique.to(device), True)  # (n_unique,)
+            voxel_indices = self.find_voxel_indices(voxels_unique.to(device), True, level=1)  # (n_unique,)
             voxel_sizes = self.get_voxel_discrete_size(voxel_indices)  # (n_unique,)
             mask = voxel_sizes != 1  # only insert voxels that do not exist at size 1
             voxel_indices[mask] = self.insert_voxels(voxels_unique[mask]).to(device)
@@ -112,7 +120,7 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
         return voxel_sizes
 
     @abstractmethod
-    def find_voxel_indices(self, points: torch.Tensor, are_voxels: bool) -> torch.Tensor:
+    def find_voxel_indices(self, points: torch.Tensor, are_voxels: bool, level: int = 1) -> torch.Tensor:
         """
         Finds the voxel indices for the given points.
         Args:
@@ -139,11 +147,13 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
 
         if batch_size > 0:
             n_points = points.shape[0]
+            voxel_indices = torch.zeros((n_points,), dtype=torch.long, device=points.device)
             sdf_preds = torch.zeros((n_points,), dtype=torch.float32, device=points.device)
+            residual_features = torch.zeros((n_points, self.cfg.residual_feature_dim*self.cfg.residual_num_levels), dtype=torch.float32, device=points.device)
             for start in range(0, n_points, batch_size):
                 end = min(start + batch_size, n_points)
-                sdf_preds[start:end] = self.forward(points[start:end], voxel_indices[start:end])
-            return sdf_preds, voxel_indices
+                voxel_indices[start:end], sdf_preds[start:end], residual_features[start:end] = self.forward(points[start:end], voxel_indices[start:end])
+            return voxel_indices, sdf_preds, residual_features
 
         # Implement the forward pass logic here
         assert voxel_indices.dtype == torch.long
@@ -158,7 +168,7 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
         vertex_sdf_priors = self.sdf_priors[vertex_indices]  # (n_points, 8)
         vertex_grad_priors = self.grad_priors[vertex_indices]  # (n_points, 8, 3)
 
-        sdf_preds = ga_trilinear(
+        sdf_preds, p = ga_trilinear(
             points=points,
             voxel_centers=voxel_centers,
             voxel_sizes=voxel_sizes,
@@ -168,7 +178,39 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
             gradient_augmentation=self.cfg.gradient_augmentation,
             little_endian=self.little_endian_vertex_order,
         )
-        return sdf_preds, voxel_indices
+
+
+        if self.cfg.residual_feature_dim > 0:
+            per_point_vertex_residual_features_level_1 = self.residual_features[
+                vertex_indices
+            ]  # (n_points, 8, residual_feature_dim)
+            residual_features = trilinear_interpolation(
+                points=p,
+                per_point_vertex_values=per_point_vertex_residual_features_level_1,
+                little_endian=self.little_endian_vertex_order,
+            )
+            if self.cfg.residual_num_levels > 1:
+                for level in range(2, self.cfg.residual_num_levels + 1):
+                    residual_voxel_indices = self.find_voxel_indices(points, False, level)
+                    residual_voxel_centers = self.voxel_centers[residual_voxel_indices]  # (n_points, 3)
+                    residual_vertex_indices = self.vertex_indices[residual_voxel_indices]  # (n_points, 8)
+                    residual_voxel_sizes = self.voxels[residual_voxel_indices, -1:]  # (n_points, 1)
+                    p = (points - residual_voxel_centers) / (
+                        residual_voxel_sizes * self.cfg.resolution
+                    ) + 0.5  # (n_points, 3)
+                    per_point_vertex_residual_features_level_n = self.residual_features[
+                        residual_vertex_indices
+                    ]  # (n_points, 8, residual_feature_dim)
+                    residual_features_level_n = trilinear_interpolation(
+                        points=p,
+                        per_point_vertex_values=per_point_vertex_residual_features_level_n,
+                        little_endian=self.little_endian_vertex_order,
+                    )
+                    residual_features = torch.cat([residual_features, residual_features_level_n], dim=-1)
+        else:
+            residual_features = None
+
+        return voxel_indices, sdf_preds, residual_features
 
     @property
     @abstractmethod

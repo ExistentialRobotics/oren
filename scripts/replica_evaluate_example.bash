@@ -14,7 +14,8 @@ MODEL_PATH=${SCRIPT_DIR}/../../logs/replica_room0/2025-09-21-20-04-15/ckpt/final
 PYTHONPATH="${SCRIPT_DIR}/.." python3 "${SCRIPT_DIR}/../grad_sdf/evaluater_grad_sdf.py" \
     --config ${CONFIG_PATH} \
     --model-path ${MODEL_PATH} \
-    --extract-mesh
+    --extract-mesh \
+    --clean-mesh
 
 # sdf & grad metrics
 PYTHONPATH="${SCRIPT_DIR}/.." python3 "${SCRIPT_DIR}/../grad_sdf/evaluater_grad_sdf.py" \

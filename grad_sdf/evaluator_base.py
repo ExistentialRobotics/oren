@@ -1,10 +1,54 @@
 import os
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
+import matplotlib.pyplot as plt
+from ruamel import yaml
 import trimesh
 from scipy.spatial import cKDTree
 
 from grad_sdf import MarchingCubes, np, o3d, torch
+
+
+def _load_pointcloud(path: str) -> np.ndarray:
+    """Load point cloud from .npy, .ply, or .pcd. Returns (N, 3) float array."""
+    path_lower = path.lower()
+    if path_lower.endswith(".npy"):
+        pts = np.load(path).astype(np.float64)
+    elif path_lower.endswith(".ply") or path_lower.endswith(".pcd"):
+        pcd = o3d.io.read_point_cloud(path)
+        pts = np.asarray(pcd.points, dtype=np.float64)
+    else:
+        raise ValueError(f"Unsupported point cloud format: {path}. Use .npy, .ply, or .pcd")
+    if pts.ndim != 2 or pts.shape[1] != 3:
+        raise ValueError(f"Point cloud must be (N, 3), got shape {pts.shape}")
+    return pts
+
+
+def _load_bbox(bbox_def_file: str | None) -> Tuple[trimesh.Trimesh | None, dict | None]:
+    if bbox_def_file is None:
+        return None, None
+
+    with open(bbox_def_file, "r") as f:
+        bbox_def = yaml.safe_load(f)
+    bbox_size = bbox_def["size"]
+    bbox_center = bbox_def["center"]
+    bbox_rotation = bbox_def["rotation"]  # quaternion [w, x, y, z]
+
+    bbox_extents = np.array(bbox_size)
+    bbox_pose = trimesh.transformations.quaternion_matrix(bbox_rotation)
+    bbox_pose[:3, 3] = bbox_center
+    bbox = trimesh.creation.box(extents=bbox_extents, transform=bbox_pose)
+
+    bbox_def = dict(size=bbox_size, pose=bbox_pose)
+
+    return bbox, bbox_def
+
+
+def _crop_to_bbox(mesh: trimesh.Trimesh, bbox: Optional[trimesh.Trimesh]) -> trimesh.Trimesh:
+    if bbox is None:
+        return mesh
+    mesh = mesh.slice_plane(bbox.facets_origin, -bbox.facets_normal)
+    return mesh
 
 
 class EvaluatorBase:
@@ -19,6 +63,9 @@ class EvaluatorBase:
         model_path: str | None = None,
         model_create_func: Callable[[str], torch.nn.Module] | None = None,
         device: str = "cuda",
+        absolute_sdf: bool = True,
+        grad_err_outlier_threshold: float = 0.5,
+        interactive: bool = False,
     ):
         """
         Base class for evaluators.
@@ -29,10 +76,17 @@ class EvaluatorBase:
             model_path: optional, if model is not provided, load the model from this path
             model_create_func: optional, function to create the model, takes model_path as input, returns the model
             device: device to run the model on
+            absolute_sdf: if True, ignore the sign of SDF values when computing metrics, only consider absolute values.
+            This is useful when the ground truth SDF does not have sign information.
+            grad_err_outlier_threshold: threshold to filter out outliers in gradient error computation, in radians
+            interactive: whether to enable interactive visualization (e.g., for gradient angle difference)
         """
         assert model_forward_func is not None
         self.model_forward_func = model_forward_func
         self.device = device
+        self.grad_err_outlier_threshold = grad_err_outlier_threshold
+        self.interactive = interactive
+        self.absolute_sdf = absolute_sdf
 
         if model is not None:
             self.model = model.to(self.device)
@@ -44,19 +98,35 @@ class EvaluatorBase:
             self.model: torch.nn.Module = model_create_func(model_path).to(self.device)
             self.model.eval()
 
-    @staticmethod
-    def _sdf_metrics(sdf_pred: torch.Tensor, sdf_gt: torch.Tensor):
+    def _sdf_metrics(self, sdf_pred: torch.Tensor, sdf_gt: torch.Tensor):
+        if self.absolute_sdf:
+            sdf_pred = sdf_pred.abs()
+            sdf_gt = sdf_gt.abs()
         diff = sdf_pred - sdf_gt
         return dict(mae=diff.abs().mean().item(), rmse=(diff**2).mean().sqrt().item())
 
-    @staticmethod
-    def _grad_metrics(grad_pred: torch.Tensor, grad_gt: torch.Tensor):
+    def _grad_metrics(self, grad_pred: torch.Tensor, grad_gt: torch.Tensor, mask: Optional[torch.Tensor] = None):
         grad_pred /= grad_pred.norm(dim=-1, keepdim=True) + 1e-8
         grad_gt /= grad_gt.norm(dim=-1, keepdim=True) + 1e-8
         cos_sim = (grad_pred * grad_gt).sum(dim=-1)
         cos_sim = torch.clamp(cos_sim, -1.0, 1.0)
         angle_diff = torch.acos(cos_sim)  # in radians
-        return angle_diff.abs().mean().item()
+        if mask is not None:
+            angle_diff = angle_diff[mask]
+
+        if self.interactive:
+            # visualize as histograms
+            plt.figure()
+            plt.hist(angle_diff.cpu().numpy(), bins=50, color="steelblue", edgecolor="black", alpha=0.7)
+            plt.xlabel("Angle Difference (radians)")
+            plt.ylabel("Count")
+            plt.title("Gradient Angle Difference")
+            plt.show()
+
+        angle_diff = angle_diff.abs()
+        mask = angle_diff < self.grad_err_outlier_threshold
+        angle_diff = angle_diff[mask]
+        return angle_diff.mean().item()
 
     def sdf_and_grad_metrics(
         self,
@@ -89,15 +159,74 @@ class EvaluatorBase:
             all={k: self._sdf_metrics(result[k][all_mask], gt_sdf_values[all_mask]) for k in sdf_fields},
         )
 
+        if self.interactive:
+            # visualization of gradient angle difference on the grid as a 2D z-slice
+            grad_pred = result["grad"]["sdf"]
+            grad_gt = gt_sdf_grad
+
+            grad_pred /= grad_pred.norm(dim=-1, keepdim=True) + 1e-8
+            grad_gt /= grad_gt.norm(dim=-1, keepdim=True) + 1e-8
+            cos_sim = (grad_pred * grad_gt).sum(dim=-1)
+            cos_sim = torch.clamp(cos_sim, -1.0, 1.0)
+            angle_diff = torch.acos(cos_sim)  # in radians
+
+            angle_diff = angle_diff.reshape(grid_points.shape[:-1])  # reshape to (nx, ny, nz)
+            mask = (gt_sdf_values > 0) & (result["sdf"] > 0)  # only consider where both gt and pred are positive
+            angle_diff[mask] = 0
+
+            plt.figure()
+            z = 0
+            img = plt.imshow(angle_diff[:, :, z].cpu().numpy(), cmap="viridis")
+            plt.colorbar(label="Gradient Angle Difference (radians)")
+            plt.title(f"Gradient Angle Difference at z={z}")
+            plt.xlabel("X-axis")
+            plt.ylabel("Y-axis")
+
+            def keyboard_event_handler(event):
+                nonlocal z
+                if event.key == "up":
+                    z = min(z + 1, angle_diff.shape[2] - 1)
+                elif event.key == "down":
+                    z = max(z - 1, 0)
+                data = angle_diff[:, :, z].cpu().numpy()
+                img.set_data(data)
+                # update color scale to the new data range
+                img.set_clim(vmin=data.min(), vmax=data.max())
+                plt.title(f"Gradient Angle Difference at z={z}")
+                plt.draw()
+
+            plt.gcf().canvas.mpl_connect("key_press_event", keyboard_event_handler)
+            plt.show()
+
+        # only consider gradients where both g.t. and pred. are positive
+        # because the ground truth might not have sign info
+        positive_mask_gt = gt_sdf_values > 0
+        positive_mask = {k: (result[k] > 0) & positive_mask_gt for k in sdf_fields}
         grad_metrics = dict(
             near_surface={
-                k: self._grad_metrics(result["grad"][k][near_surface_mask], gt_sdf_grad[near_surface_mask])
+                k: self._grad_metrics(
+                    result["grad"][k][near_surface_mask],
+                    gt_sdf_grad[near_surface_mask],
+                    positive_mask[k][near_surface_mask],
+                )
                 for k in sdf_fields
             },
             far_away={
-                k: self._grad_metrics(result["grad"][k][far_away_mask], gt_sdf_grad[far_away_mask]) for k in sdf_fields
+                k: self._grad_metrics(
+                    result["grad"][k][far_away_mask],
+                    gt_sdf_grad[far_away_mask],
+                    positive_mask[k][far_away_mask],
+                )
+                for k in sdf_fields
             },
-            all={k: self._grad_metrics(result["grad"][k][all_mask], gt_sdf_grad[all_mask]) for k in sdf_fields},
+            all={
+                k: self._grad_metrics(
+                    result["grad"][k][all_mask],
+                    gt_sdf_grad[all_mask],
+                    positive_mask[k][all_mask],
+                )
+                for k in sdf_fields
+            },
         )
 
         return dict(sdf_metrics=sdf_metrics, grad_metrics=grad_metrics)
@@ -107,14 +236,35 @@ class EvaluatorBase:
         pred_mesh_path: str,
         gt_mesh_path: str,
         gt_mesh_offset: List[float] | None = None,
+        bbox_def_file: str | None = None,
         threshold: float = 0.05,
         num_samples: int = 200_000,
         seed: int = 0,
-    ):
+    ) -> dict:
+        """
+        Compute mesh metrics with ground truth mesh as reference.
+
+        Args:
+            pred_mesh_path: Path to predicted mesh file.
+            gt_mesh_path: Path to ground-truth mesh file.
+            gt_mesh_offset: Optional [x, y, z] to translate GT mesh vertices.
+            bbox_def_file: Optional path to a file defining the bounding box for evaluation, in case the meshes are not well-aligned.
+            threshold: Distance threshold for precision/recall/completion_ratio.
+            num_samples: Number of points to sample on the predicted mesh for evaluation.
+            seed: Random seed for sampling.
+
+        Returns:
+            dict with completion_ratio, completion, accuracy, chamfer, precision, recall, f1,
+            threshold, num_samples, seed.
+        """
         pred_mesh = trimesh.load_mesh(pred_mesh_path)
         gt_mesh = trimesh.load_mesh(gt_mesh_path)
         if gt_mesh_offset is not None:
             gt_mesh.apply_translation(gt_mesh_offset)
+
+        bbox, bbox_def = _load_bbox(bbox_def_file)
+        pred_mesh = _crop_to_bbox(pred_mesh, bbox)
+        gt_mesh = _crop_to_bbox(gt_mesh, bbox)
 
         pred_pts = trimesh.sample.sample_surface(pred_mesh, num_samples, seed=seed)[0]
         gt_pts = trimesh.sample.sample_surface(gt_mesh, num_samples, seed=seed)[0]
@@ -149,6 +299,103 @@ class EvaluatorBase:
             f1=f1,
             threshold=threshold,
             num_samples=num_samples,
+            seed=seed,
+        )
+
+    @staticmethod
+    def mesh_metrics_pointcloud_gt(
+        pred_mesh_path: str,
+        gt_pointcloud_path: str,
+        gt_pointcloud_offset: List[float] | None = None,
+        bbox_def_file: str | None = None,
+        threshold: float = 0.05,
+        num_samples: int = 200_000,
+        seed: int = 0,
+    ):
+        """
+        Compute mesh metrics with point cloud as ground truth.
+
+        Prediction is a mesh (sampled to num_pred_samples points). Ground truth is a point cloud
+        loaded from file (.npy, .ply, or .pcd), used as-is.
+
+        Args:
+            pred_mesh_path: Path to predicted mesh file.
+            gt_pointcloud_path: Path to ground-truth point cloud (.npy, .ply, or .pcd).
+            gt_pointcloud_offset: Optional [x, y, z] to translate GT points.
+            bbox_def_file: Path to bounding box definition file (optional).
+            threshold: Distance threshold for precision/recall/completion_ratio.
+            num_samples: Number of points to sample on the predicted mesh.
+            seed: Random seed for sampling.
+
+        Returns:
+            dict with completion_ratio, completion, accuracy, chamfer, precision, recall, f1,
+            threshold, num_samples, num_gt_points, seed.
+        """
+        pred_mesh = trimesh.load_mesh(pred_mesh_path)
+        gt_pts_all = _load_pointcloud(gt_pointcloud_path)
+        if gt_pointcloud_offset is not None:
+            gt_pts_all = gt_pts_all + np.array(gt_pointcloud_offset, dtype=gt_pts_all.dtype)
+
+        bbox, bbox_def = _load_bbox(bbox_def_file)
+        pred_mesh = _crop_to_bbox(pred_mesh, bbox)
+        if bbox is not None:
+            points = np.asarray(gt_pts_all)
+            bbox_
+
+        pred_pts = trimesh.sample.sample_surface(pred_mesh, num_samples, seed=seed)[0]
+        num_gt = gt_pts_all.shape[0]
+        if gt_pts_all.shape[0] > num_samples:
+            rng = np.random.default_rng(seed)
+            indices = rng.choice(gt_pts_all.shape[0], num_samples, replace=False)
+            gt_pts = gt_pts_all[indices]
+
+        gt_tree = cKDTree(gt_pts_all)
+        pred_tree = cKDTree(pred_pts)
+
+        dist_pred_to_gt, _ = gt_tree.query(pred_pts, k=1, workers=-1)
+        dist_gt_to_pred, _ = pred_tree.query(gt_pts, k=1, workers=-1)
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+        ax1.hist(dist_pred_to_gt, bins=50, color="steelblue", edgecolor="black", alpha=0.7)
+        ax1.set_xlabel("Distance")
+        ax1.set_ylabel("Count")
+        ax1.set_title("dist_pred_to_gt (pred → nearest GT)")
+        ax1.axvline(threshold, color="red", linestyle="--", label=f"threshold={threshold}")
+        ax1.legend()
+        ax2.hist(dist_gt_to_pred, bins=50, color="coral", edgecolor="black", alpha=0.7)
+        ax2.set_xlabel("Distance")
+        ax2.set_ylabel("Count")
+        ax2.set_title("dist_gt_to_pred (GT → nearest pred)")
+        ax2.axvline(threshold, color="red", linestyle="--", label=f"threshold={threshold}")
+        ax2.legend()
+        plt.tight_layout()
+        plt.show()
+
+        completion_ratio = np.mean(dist_gt_to_pred < threshold).item()
+        completion = np.mean(dist_gt_to_pred)
+
+        accuracy = np.mean(dist_pred_to_gt)
+        chamfer = (completion + accuracy) / 2.0
+
+        tp = np.sum(dist_pred_to_gt < threshold).item()
+        fp = num_samples - tp
+        fn = np.sum(dist_gt_to_pred >= threshold).item()
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+        return dict(
+            completion_ratio=completion_ratio,
+            completion=completion,
+            accuracy=accuracy,
+            chamfer=chamfer,
+            precision=precision,
+            recall=recall,
+            f1=f1,
+            threshold=threshold,
+            num_samples=num_samples,
+            num_gt_points=num_gt,
             seed=seed,
         )
 
@@ -223,7 +470,7 @@ class EvaluatorBase:
         results["grid_bound"] = torch.tensor([bound_min, bound_max])
         results["grid_shape"] = torch.tensor(grid_points.shape[:-1], dtype=torch.long)
         results["grid_resolution"] = torch.tensor(grid_resolution)
-        results["mask"] = mask.to(self.device if device is None else device)  # type: ignore
+        results["mask"] = mask.to(self.device if device is None else device) if mask is not None else None
 
         return results
 

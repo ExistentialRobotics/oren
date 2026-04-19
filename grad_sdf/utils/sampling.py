@@ -38,6 +38,7 @@ class SampleResults:
     perturbation_sdf: torch.Tensor
     n_stratified: int
     n_perturbed: int
+    positive_perturbation_mask: torch.Tensor
 
 
 @torch.no_grad()
@@ -126,21 +127,33 @@ def generate_sdf_samples(
     stratified_positive_mask = torch.zeros(num_valid_rays, n_stratified, dtype=torch.bool, device=device)
     stratified_negative_mask = torch.ones(num_valid_rays, n_stratified, dtype=torch.bool, device=device)
 
-    #############################################################
-    # 2. Gaussian sampling (vectorized) - perturbation by depth #
-    #############################################################
-    gaussian_depths = torch.normal(  # (num_valid_rays, n_perturbed)
-        mean=depth_samples_valid.cpu().unsqueeze(1).expand(-1, n_perturbed), std=sigma_s
-    ).to(device)
-    # Truncate Gaussian samples to within 2*std
-    truncation_range = 2 * sigma_s
-    gaussian_depths = torch.clamp(
-        gaussian_depths,
-        min=depth_samples_valid.unsqueeze(1) - truncation_range,
-        max=depth_samples_valid.unsqueeze(1) + truncation_range,
-    )
-    # Record positive perturbations
-    gaussian_positive_mask = gaussian_depths > depth_samples_valid.unsqueeze(1)  # (num_valid_rays, n_perturbed)
+    ############################
+    # 2. perturbation by depth #
+    ############################
+    # Split perturbations: half in [-3*sigma_s, -sigma_s], half in [sigma_s, 3*sigma_s]
+    n_negative = n_perturbed // 2  # samples before surface
+    n_positive = n_perturbed - n_negative  # samples after surface
+
+    # Negative perturbations: [-3*sigma_s, -sigma_s]
+    negative_offsets = torch.rand(num_valid_rays, n_negative, device="cpu").to(device)  # [0, 1]
+    negative_offsets = -3 * sigma_s + negative_offsets * (2 * sigma_s)  # [-3*sigma_s, -sigma_s]
+
+    # Positive perturbations: [sigma_s, 3*sigma_s]
+    positive_offsets = torch.rand(num_valid_rays, n_positive, device="cpu").to(device)  # [0, 1]
+    positive_offsets = sigma_s + positive_offsets * (2 * sigma_s)  # [sigma_s, 3*sigma_s]
+
+    # Combine offsets and compute depths
+    perturbation_offsets = torch.cat([negative_offsets, positive_offsets], dim=1)  # (num_valid_rays, n_perturbed)
+    perturbed_depths = depth_samples_valid.unsqueeze(1) + perturbation_offsets  # (num_valid_rays, n_perturbed)
+
+    # Create mask: first n_negative are False (negative), last n_positive are True (positive)
+    positive_perturbation_mask = torch.cat(
+        [
+            torch.zeros(num_valid_rays, n_negative, dtype=torch.bool, device=device),
+            torch.ones(num_valid_rays, n_positive, dtype=torch.bool, device=device),
+        ],
+        dim=1,
+    )  # (num_valid_rays, n_perturbed)
 
     ######################
     # 3. Surface samples #
@@ -152,13 +165,13 @@ def generate_sdf_samples(
     #######################
 
     # (num_valid_rays, n_stratified + n_perturbed + 1)
-    all_depths = torch.cat([stratified_depths, gaussian_depths, surface_samples], dim=1)
+    all_depths = torch.cat([stratified_depths, perturbed_depths, surface_samples], dim=1)
 
     # Original negative_sdf_mask for backward compatibility
     negative_sdf_mask = torch.cat(
         [
             stratified_positive_mask,
-            gaussian_positive_mask,
+            positive_perturbation_mask,
             torch.zeros(num_valid_rays, 1, dtype=torch.bool, device=device),
         ],
         dim=1,
@@ -166,7 +179,7 @@ def generate_sdf_samples(
     positive_sdf_mask = torch.cat(
         [
             stratified_negative_mask,
-            ~gaussian_positive_mask,
+            ~positive_perturbation_mask,
             torch.zeros(num_valid_rays, 1, dtype=torch.bool, device=device),
         ],
         dim=1,
@@ -178,11 +191,15 @@ def generate_sdf_samples(
 
     sdf = nearest_neighbor(
         src=sampled_xyz[:, :-1].contiguous().view(-1, 3),
-        dst=sampled_xyz[:, -1].contiguous().view(-1, 3) if extra_surface_pcd is None else extra_surface_pcd.to(device),
+        dst=(
+            sampled_xyz[:, -1].contiguous().view(-1, 3)
+            if extra_surface_pcd is None
+            else torch.cat([extra_surface_pcd.to(device), sampled_xyz[:, -1].contiguous().view(-1, 3)], dim=0)
+        ),
     )[0].view(num_valid_rays, -1)
     stratified_sdf = sdf[:, :n_stratified].view(num_valid_rays, n_stratified)
     perturbation_sdf = sdf[:, n_stratified : n_stratified + n_perturbed].view(num_valid_rays, n_perturbed)
-    perturbation_sdf = torch.where(gaussian_positive_mask, -perturbation_sdf, perturbation_sdf)
+    perturbation_sdf = torch.where(positive_perturbation_mask, -perturbation_sdf, perturbation_sdf)
 
     return SampleResults(
         sampled_xyz=sampled_xyz,
@@ -193,4 +210,5 @@ def generate_sdf_samples(
         perturbation_sdf=perturbation_sdf,
         n_stratified=n_stratified,
         n_perturbed=n_perturbed,
+        positive_perturbation_mask=positive_perturbation_mask,
     )

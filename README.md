@@ -11,6 +11,8 @@ $\nabla$-SDF: Learning Euclidean Signed Distance Functions Online with Gradient-
 
 This repository contains the code for the paper: **$\nabla$-SDF: Learning Euclidean Signed Distance Functions Online with Gradient-Augmented Octree Interpolation and Neural Residual**.
 
+This branch targets running the grad-SDF mapping as a ROS 2 node.
+
 $\nabla$-SDF is a hybrid SDF reconstruction framework that combines gradient-augmented octree interpolation with an implicit neural residual to achieve efficient, continuous non-truncated, and highly accurate Euclidean SDF mapping..
 
 <div align="center">
@@ -99,56 +101,34 @@ $\nabla$-SDF is a hybrid SDF reconstruction framework that combines gradient-aug
     # CXX=/usr/bin/g++-14 pip install --no-build-isolation --verbose .
     ```
 
-## Prepare Dataset
+## ROS 2 (this branch)
 
-Download Replica Dataset (only mesh, camera parameter and trajectory) at [One-Drive Link](https://ucsdcloud-my.sharepoint.com/my?id=%2Fpersonal%2Fzhdai%5Fucsd%5Fedu%2FDocuments%2FPublicShare%2Fgrad%2Dsdf%2Freplica%2Etar%2Egz&parent=%2Fpersonal%2Fzhdai%5Fucsd%5Fedu%2FDocuments%2FPublicShare%2Fgrad%2Dsdf&ga=1) and put it under path "data/Replica"
-
-Run the following commands to preprocess the Replica dataset:
-
-The script [`grad_sdf/dataset/replica_obb_rotation.py`](grad_sdf/dataset/replica_obb_rotation.py) is used to rotate mesh and trajectory to better match octree.
-```bash
-python grad_sdf/dataset/replica_obb_rotation.py \
-    --dataset-dir data/Replica \
-    --output-dir data/Replica_preprocessed
-```
-copy camera parameter to preprocessed data folder
-```bash
-cp data/Replica/cam_params.json data/Replica_preprocessed
-```
-The script [`grad_sdf/dataset/replica_augment_views.py`](grad_sdf/dataset/replica_augment_views.py) is used to augment the Replica dataset with additional virtual camera views (e.g., upward-looking frames) to improve spatial coverage for training.
-```bash
-python grad_sdf/dataset/replica_augment_views.py \
-    --original-dir data/Replica_preprocessed \
-    --output-dir data/Replica_preprocessed \
-    # --scenes room0  # (optional) Process specific scenes only. If not set, process all scenes. \
-    # --interval 50  # (optional, default=50) Insert upward-looking frames every n frames. \
-    # --n-rolls-per-insertion 10 # (optional, default=10) Number of roll rotations per insertion. \
-    # --keep-existing  # (optional) Keep existing RGBD data.
-```
-## Run $\nabla$-SDF
-
-### Example: Training on Replica Scene *room0*
-
-Run the following command to start training on the Replica dataset scene **room0**:
+### Build and install
 
 ```bash
-python grad_sdf/trainer.py  --config configs/v2/replica_room0.yaml
+# from repo root
+colcon build --packages-select grad_sdf
+source install/setup.bash
 ```
 
-### Run GUI Trainer
-
-The GUI trainer allows interactive visualization and monitoring of the training process, including SDF slice, octree structure, and camera poses.
+### Launch mapping node with rosbag
 
 ```bash
-python grad_sdf/gui_trainer.py \
-    --gui-config configs/v2/gui.yaml \
-    --trainer-config configs/v2/replica_room0.yaml \
-    --gt-mesh-path data/Replica_preprocessed/room0_mesh.ply \
-    --apply-offset-to-gt-mesh \
-    --copy-scene-bound-to-gui
+ros2 launch grad_sdf mapping_with_bag.launch.py \
+  config_path:=/home/qihao/workplace/grad-sdf/configs/v2/quad-ros.yaml
 ```
 
-## Docker
+Optional arguments:
+```bash
+ros2 launch grad_sdf mapping_with_bag.launch.py \
+  bag_path:=/home/qihao/workplace/grad-sdf/data/newercollege-ros2 \
+  config_path:=/home/qihao/workplace/grad-sdf/configs/v2/trainer.yaml \
+  play_rate:=1.0 \
+  bag_delay:=1.0
+```
+
+
+<!-- ## Docker
 
 ### 1. Build the image
 First, build the Docker image (make sure you are in the project root):
@@ -178,7 +158,7 @@ docker run --privileged --restart always -t \
     --name grad_sdf \
     erl/grad_sdf:24.04 \
     bash -l
-```
+``` -->
 
 ## Citation
 
@@ -186,13 +166,13 @@ If you find this work useful in your research, please consider citing:
 
 ```bibtex
 @misc{dai2025nablasdf,
-      title={{$\nabla$-SDF: Learning Euclidean Signed Distance Functions Online with Gradient-Augmented Octree Interpolation and Neural Residual}}, 
+      title={{$\nabla$-SDF: Learning Euclidean Signed Distance Functions Online with Gradient-Augmented Octree Interpolation and Neural Residual}},
       author={Zhirui Dai and Qihao Qian and Tianxing Fan and Nikolay Atanasov},
       year={2025},
       eprint={2510.18999},
       archivePrefix={arXiv},
       primaryClass={cs.RO},
-      url={https://arxiv.org/abs/2510.18999}, 
+      url={https://arxiv.org/abs/2510.18999},
 }
 ```
 

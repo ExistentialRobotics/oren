@@ -1,5 +1,5 @@
-torch==2.8.0
-torchvision==0.23.0
+# torch==2.8.0
+# torchvision==0.23.0
 pyyaml
 opencv-python
 matplotlib
@@ -14,3 +14,4 @@ tqdm
 transforms3d
 trimesh
 colorama
+open3d

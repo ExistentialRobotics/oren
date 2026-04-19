@@ -1,0 +1,151 @@
+[1m[38;2;000;191;255m[19:14:42][INFO]: [0m/home/daizhirui/D/Dev/grad-sdf/deps/erl_geometry/src/erl_geometry/init.cpp:26: erl_geometry initialized
+Creating model...
+Loading model weights from /home/daizhirui/D/Dev/grad-sdf/scripts/../logs/IROS/replica/ablation-study-room1/base/2026-03-02-18-33-11/ckpt/final.pth...
+Saved metrics to /home/daizhirui/D/Dev/grad-sdf/logs/IROS/replica/ablation-study-room1/base/2026-03-02-18-33-11/eval/sdf_and_grad_metrics.csv
+sdf_metrics.near_surface.sdf.mae: 0.012028910219669342
+sdf_metrics.near_surface.sdf.rmse: 0.028707081452012062
+sdf_metrics.near_surface.sdf_prior.mae: 0.013201405294239521
+sdf_metrics.near_surface.sdf_prior.rmse: 0.03609820827841759
+sdf_metrics.far_away.sdf.mae: 0.024680310860276222
+sdf_metrics.far_away.sdf.rmse: 0.035967420786619186
+sdf_metrics.far_away.sdf_prior.mae: 0.029812848195433617
+sdf_metrics.far_away.sdf_prior.rmse: 0.04120161384344101
+sdf_metrics.all.sdf.mae: 0.01861955225467682
+sdf_metrics.all.sdf.rmse: 0.032691121101379395
+sdf_metrics.all.sdf_prior.mae: 0.021854998543858528
+sdf_metrics.all.sdf_prior.rmse: 0.03884054720401764
+grad_metrics.near_surface.sdf: 0.11658159643411636
+grad_metrics.near_surface.sdf_prior: 0.11072848737239838
+grad_metrics.far_away.sdf: 0.17695505917072296
+grad_metrics.far_away.sdf_prior: 0.1822672188282013
+grad_metrics.all.sdf: 0.15271103382110596
+grad_metrics.all.sdf_prior: 0.15289351344108582
+Metrics for /home/daizhirui/D/Dev/grad-sdf/scripts/../logs/IROS/replica/ablation-study-room1/base/2026-03-02-18-33-11/mesh/mesh.ply:
+  completion_ratio: 0.960045
+  completion: 0.017047104057738658
+  accuracy: 0.022012361997676366
+  chamfer: 0.01952973302770751
+  precision: 0.90982
+  recall: 0.9579321418230634
+  f1: 0.9332564013796464
+  threshold: 0.05
+  num_samples: 200000
+  seed: 0
+Saved metrics to /home/daizhirui/D/Dev/grad-sdf/logs/IROS/replica/ablation-study-room1/base/2026-03-02-18-33-11/eval/mesh_metrics.csv
+[1m[38;2;000;191;255m[19:14:51][INFO]: [0m/home/daizhirui/D/Dev/grad-sdf/deps/erl_geometry/src/erl_geometry/init.cpp:26: erl_geometry initialized
+Creating model...
+Loading model weights from /home/daizhirui/D/Dev/grad-sdf/scripts/../logs/IROS/replica/ablation-study-room1/base/2026-03-02-18-33-11/ckpt/final.pth...
+Metrics for /home/daizhirui/D/Dev/grad-sdf/scripts/../logs/IROS/replica/ablation-study-room1/base/2026-03-02-18-33-11/mesh/mesh_prior.ply:
+  completion_ratio: 0.960515
+  completion: 0.01708714695448585
+  accuracy: 0.022339955816919513
+  chamfer: 0.01971355138570268
+  precision: 0.90484
+  recall: 0.9581870648346703
+  f1: 0.9307497460558292
+  threshold: 0.05
+  num_samples: 200000
+  seed: 0
+Saved metrics to /home/daizhirui/D/Dev/grad-sdf/logs/IROS/replica/ablation-study-room1/base/2026-03-02-18-33-11/eval/mesh_metrics.csv
+[1m[38;2;000;191;255m[19:14:55][INFO]: [0m/home/daizhirui/D/Dev/grad-sdf/deps/erl_geometry/src/erl_geometry/init.cpp:26: erl_geometry initialized
+Creating model...
+Loading model weights from /home/daizhirui/D/Dev/grad-sdf/scripts/../logs/IROS/replica/ablation-study-room1/sparse-octree/2026-03-02-19-08-36/ckpt/final.pth...
+Saved metrics to /home/daizhirui/D/Dev/grad-sdf/logs/IROS/replica/ablation-study-room1/sparse-octree/2026-03-02-19-08-36/eval/sdf_and_grad_metrics.csv
+sdf_metrics.near_surface.sdf.mae: 0.012770453467965126
+sdf_metrics.near_surface.sdf.rmse: 0.031137490645051003
+sdf_metrics.near_surface.sdf_prior.mae: 0.013938347809016705
+sdf_metrics.near_surface.sdf_prior.rmse: 0.036275770515203476
+sdf_metrics.far_away.sdf.mae: 0.02836933359503746
+sdf_metrics.far_away.sdf.rmse: 0.04154618829488754
+sdf_metrics.far_away.sdf_prior.mae: 0.03484836593270302
+sdf_metrics.far_away.sdf_prior.rmse: 0.05198800563812256
+sdf_metrics.all.sdf.mae: 0.020896559581160545
+sdf_metrics.all.sdf.rmse: 0.03692774102091789
+sdf_metrics.all.sdf_prior.mae: 0.024831248447299004
+sdf_metrics.all.sdf_prior.rmse: 0.04514847323298454
+grad_metrics.near_surface.sdf: 0.12288518249988556
+grad_metrics.near_surface.sdf_prior: 0.11843232810497284
+grad_metrics.far_away.sdf: 0.189527690410614
+grad_metrics.far_away.sdf_prior: 0.1883174628019333
+grad_metrics.all.sdf: 0.16261543333530426
+grad_metrics.all.sdf_prior: 0.15862932801246643
+Metrics for /home/daizhirui/D/Dev/grad-sdf/scripts/../logs/IROS/replica/ablation-study-room1/sparse-octree/2026-03-02-19-08-36/mesh/mesh.ply:
+  completion_ratio: 0.95948
+  completion: 0.017167061330257895
+  accuracy: 0.022275892609160134
+  chamfer: 0.019721476969709016
+  precision: 0.90453
+  recall: 0.9571239616951484
+  f1: 0.9300840595357445
+  threshold: 0.05
+  num_samples: 200000
+  seed: 0
+Saved metrics to /home/daizhirui/D/Dev/grad-sdf/logs/IROS/replica/ablation-study-room1/sparse-octree/2026-03-02-19-08-36/eval/mesh_metrics.csv
+[1m[38;2;000;191;255m[19:15:04][INFO]: [0m/home/daizhirui/D/Dev/grad-sdf/deps/erl_geometry/src/erl_geometry/init.cpp:26: erl_geometry initialized
+Creating model...
+Loading model weights from /home/daizhirui/D/Dev/grad-sdf/scripts/../logs/IROS/replica/ablation-study-room1/no-grad-aug/2026-03-02-19-00-47/ckpt/final.pth...
+Saved metrics to /home/daizhirui/D/Dev/grad-sdf/logs/IROS/replica/ablation-study-room1/no-grad-aug/2026-03-02-19-00-47/eval/sdf_and_grad_metrics.csv
+sdf_metrics.near_surface.sdf.mae: 0.016119981184601784
+sdf_metrics.near_surface.sdf.rmse: 0.043329257518053055
+sdf_metrics.near_surface.sdf_prior.mae: 0.02133910544216633
+sdf_metrics.near_surface.sdf_prior.rmse: 0.058547694236040115
+sdf_metrics.far_away.sdf.mae: 0.02756800316274166
+sdf_metrics.far_away.sdf.rmse: 0.04011610522866249
+sdf_metrics.far_away.sdf_prior.mae: 0.07710430026054382
+sdf_metrics.far_away.sdf_prior.rmse: 0.1240060105919838
+sdf_metrics.all.sdf.mae: 0.02208373323082924
+sdf_metrics.all.sdf.rmse: 0.04168630763888359
+sdf_metrics.all.sdf_prior.mae: 0.050389520823955536
+sdf_metrics.all.sdf_prior.rmse: 0.09824921190738678
+grad_metrics.near_surface.sdf: 0.12978781759738922
+grad_metrics.near_surface.sdf_prior: 0.1258782297372818
+grad_metrics.far_away.sdf: 0.1890408843755722
+grad_metrics.far_away.sdf_prior: 0.21734708547592163
+grad_metrics.all.sdf: 0.16607272624969482
+grad_metrics.all.sdf_prior: 0.17598533630371094
+Metrics for /home/daizhirui/D/Dev/grad-sdf/scripts/../logs/IROS/replica/ablation-study-room1/no-grad-aug/2026-03-02-19-00-47/mesh/mesh.ply:
+  completion_ratio: 0.961695
+  completion: 0.017085315948090485
+  accuracy: 0.024406903201898776
+  chamfer: 0.02074610957499463
+  precision: 0.886065
+  recall: 0.9585609658470093
+  f1: 0.9208883946434417
+  threshold: 0.05
+  num_samples: 200000
+  seed: 0
+Saved metrics to /home/daizhirui/D/Dev/grad-sdf/logs/IROS/replica/ablation-study-room1/no-grad-aug/2026-03-02-19-00-47/eval/mesh_metrics.csv
+[1m[38;2;000;191;255m[19:15:12][INFO]: [0m/home/daizhirui/D/Dev/grad-sdf/deps/erl_geometry/src/erl_geometry/init.cpp:26: erl_geometry initialized
+Creating model...
+Loading model weights from /home/daizhirui/D/Dev/grad-sdf/scripts/../logs/IROS/replica/ablation-study-room1/no-proj-loss/2026-03-02-19-03-58/ckpt/final.pth...
+Saved metrics to /home/daizhirui/D/Dev/grad-sdf/logs/IROS/replica/ablation-study-room1/no-proj-loss/2026-03-02-19-03-58/eval/sdf_and_grad_metrics.csv
+sdf_metrics.near_surface.sdf.mae: 0.023027420043945312
+sdf_metrics.near_surface.sdf.rmse: 0.05025200545787811
+sdf_metrics.near_surface.sdf_prior.mae: 0.023778419941663742
+sdf_metrics.near_surface.sdf_prior.rmse: 0.05240364372730255
+sdf_metrics.far_away.sdf.mae: 0.337557852268219
+sdf_metrics.far_away.sdf.rmse: 0.46362143754959106
+sdf_metrics.far_away.sdf_prior.mae: 0.3398556411266327
+sdf_metrics.far_away.sdf_prior.rmse: 0.46534785628318787
+sdf_metrics.all.sdf.mae: 0.18687944114208221
+sdf_metrics.all.sdf.rmse: 0.3364275097846985
+sdf_metrics.all.sdf_prior.mae: 0.18843621015548706
+sdf_metrics.all.sdf_prior.rmse: 0.3378235697746277
+grad_metrics.near_surface.sdf: 0.1327560395002365
+grad_metrics.near_surface.sdf_prior: 0.1238325908780098
+grad_metrics.far_away.sdf: 0.25192227959632874
+grad_metrics.far_away.sdf_prior: 0.25577735900878906
+grad_metrics.all.sdf: 0.1712944060564041
+grad_metrics.all.sdf_prior: 0.16380169987678528
+Metrics for /home/daizhirui/D/Dev/grad-sdf/scripts/../logs/IROS/replica/ablation-study-room1/no-proj-loss/2026-03-02-19-03-58/mesh/mesh.ply:
+  completion_ratio: 0.95646
+  completion: 0.0177506198240135
+  accuracy: 0.03045184637169348
+  chamfer: 0.02410123309785349
+  precision: 0.840445
+  recall: 0.9507457705730301
+  f1: 0.8921992478708695
+  threshold: 0.05
+  num_samples: 200000
+  seed: 0
+Saved metrics to /home/daizhirui/D/Dev/grad-sdf/logs/IROS/replica/ablation-study-room1/no-proj-loss/2026-03-02-19-03-58/eval/mesh_metrics.csv

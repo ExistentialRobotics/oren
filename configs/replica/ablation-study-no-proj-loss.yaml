@@ -1,0 +1,5 @@
+base_config: ablation-study-base.yaml
+exp_name: no-proj-loss
+criterion:
+    projection_loss_weight: 0
+    projection_loss_prior_weight: 0

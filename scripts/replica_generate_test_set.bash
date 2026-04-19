@@ -12,6 +12,7 @@ for scene in office0 office1 office2 office3 office4 room0 room1 room2; do
         --mesh-path "${DATA_DIR}/${scene}_mesh.ply" \
         --grid-resolution 0.0125 \
         --eps 0.01 \
+        --near-surface-sdf-range -0.1 0.2 \
         --output-dir "${DATA_DIR}/${scene}/test_set"
 
 done

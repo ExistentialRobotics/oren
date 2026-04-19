@@ -1,0 +1,99 @@
+identifier: grad_sdf.trainer_config.TrainerConfig
+seed: 12345
+log_dir: logs
+exp_name: replica_for_planning
+device: cuda
+data:
+    identifier: grad_sdf.dataset.data_config.DataConfig
+    dataset_name: replica
+    dataset_args:
+        data_path: "data/replica/room0"
+        min_depth: 0.0
+        max_depth: -1.0
+        offset: [0.0, 0.0, 0.0]
+        bound_min:
+        bound_max:
+    start_frame: 0
+    end_frame: -1
+key_frame_set:
+    identifier: grad_sdf.key_frame_set.KeyFrameSetConfig
+    insert_method: intersection
+    insert_interval: 50
+    insert_ratio: 0.65
+    frame_selection: multiple_max_set_coverage
+    selection_window_size: 8
+    frame_weight: uniform
+model:
+    identifier: grad_sdf.model.SdfNetworkConfig
+    octree_cfg:
+        identifier: grad_sdf.octree_config.OctreeConfig
+        resolution: 0.1
+        tree_depth: 8 # 0.1*2^8=25.6m
+        semi_sparse_depth: 5
+        init_voxel_num: 200000
+        independent_smallest_leaf_vertex: false
+        insertion_threshold: 3
+        skip_insertion_if_exists: true # speed up a bit
+        residual_feature_dim: 3
+        residual_num_levels: 1
+        gradient_augmentation: true
+        independent_smallest_leaf_vertex: false
+    residual_net_cfg:
+        identifier: grad_sdf.residual_net.ResidualNetConfig
+        bound_min: [-10, -10, -10] # will be overwritten by the dataset args
+        bound_max: [10, 10, 10] # will be overwritten by the dataset args
+        mlp_activation: LeakyReLU
+        hidden_dims: 32
+        n_hidden_layers: 2
+        output_sdf_scale: 0.1
+        input_feature_dim: 1 # will be overwritten by octree_cfg residual_feature_dim * residual_num_levels
+criterion:
+    identifier: grad_sdf.criterion.CriterionConfig
+    boundary_loss_weight: 1000
+    perturbation_loss_weight: 200
+    eikonal_loss_surface_weight: 10
+    eikonal_loss_perturbation_weight: 3
+    eikonal_loss_space_weight: 10
+    projection_loss_weight: 100
+    boundary_loss_prior_weight: 1000
+    perturbation_loss_prior_weight: 200
+    eikonal_loss_surface_prior_weight: 10
+    eikonal_loss_perturbation_prior_weight: 3
+    eikonal_loss_space_prior_weight: 10
+    projection_loss_prior_weight: 100
+    boundary_loss_type: L1
+    perturbation_loss_type: L1
+    eikonal_loss_type: L1
+    projection_loss_type: L1
+    perturbation_loss_exp_penalty: 10.0
+    heat_loss_weight: 0.0
+    heat_loss_lambda: 4.0
+    sign_loss_free_weight: 0.0
+    sign_loss_occ_weight: 0.0
+    sign_loss_temperature: 100.0
+num_init_frames: 3
+init_frame_iterations: 10
+num_iterations_per_frame: 1
+num_rays_total: 20480
+extra_surface_sample: false # not helpful
+frame_downsample: 100
+sample_rays:
+    identifier: grad_sdf.utils.sampling.SampleRaysConfig
+    n_stratified: 1
+    n_perturbed: 2
+    depth_min: 0.1
+    depth_max: 10.0
+    surface_margin: 0.09
+    sigma_s: 0.03
+batch_size: 204800
+lr: 0.005
+grad_method: finite_difference
+finite_difference_eps: 0.03
+final_iterations: 0
+save_mesh: true
+mesh_resolution: 0.02
+mesh_iso_value: 0.0
+clean_mesh: true
+ckpt_interval: -1
+profiling: false
+profiling_verbose: false

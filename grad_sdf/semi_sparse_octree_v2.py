@@ -49,7 +49,7 @@ class SemiSparseOctree(SemiSparseOctreeBase):
         return svo_idx
 
     @torch.no_grad()
-    def find_voxel_indices(self, points: torch.Tensor, are_voxels: bool) -> torch.Tensor:
+    def find_voxel_indices(self, points: torch.Tensor, are_voxels: bool, level: int = 1) -> torch.Tensor:
         if are_voxels:
             voxels = points
         else:
@@ -58,7 +58,7 @@ class SemiSparseOctree(SemiSparseOctreeBase):
         voxel_indices = find_voxel_indices(
             codes=morton_codes,
             dims=3,
-            level=self.cfg.tree_depth - 1,
+            level=self.cfg.tree_depth - level,
             children=self.structure,
         ).long()
         mask = ((voxels < 0) | (voxels >= (1 << self.cfg.tree_depth))).any(dim=-1)

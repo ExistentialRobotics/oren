@@ -1,0 +1,9 @@
+base_config: ../v2/trainer-replica.yaml
+log_dir: logs/IROS/replica/ablation-study-office0
+exp_name: base
+data:
+    dataset_args:
+        data_path: "/home/daizhirui/DataArchive/Replica-SDF-aug3/office0"
+model:
+    octree_cfg:
+        independent_smallest_leaf_vertex: true

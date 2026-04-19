@@ -1,5 +1,13 @@
 base_config: trainer.yaml
 data:
+    dataset_name: replica
     dataset_args:
-        max_depth: 10.0
-        offset: [0.0, 0.0, 0.0]
+        data_path: data/replica
+key_frame_set:
+    insert_interval: 50
+    selection_window_size: 8
+model:
+    octree_cfg:
+        resolution: 0.1
+        tree_depth: 8
+        semi_sparse_depth: 5

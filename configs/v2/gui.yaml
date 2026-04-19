@@ -36,20 +36,20 @@ octree_line_width: 2
 octree_line_color: [0.6, 0.6, 0.6]
 
 mesh_update_freq: 5
-mesh_resolution: 40
+mesh_resolution: 10
 mesh_height_color_map: jet
 mesh_color_option: normal
 
 sdf_slice_update_freq: 10
-sdf_slice_resolution: 50
+sdf_slice_resolution: 10
 sdf_point_size: 22
 sdf_slice_axis: 2
 sdf_slice_position: -1.0
 sdf_color_map: jet
 
 experiment_name: grad_sdf
-scene_bound_min: [-10.0, -10.0, -10.0]
-scene_bound_max: [10.0, 10.0, 10.0]
+scene_bound_min: [-80.0, -80.0, -80.0]
+scene_bound_max: [80.0, 80.0, 80.0]
 gt_mesh_path:
 gt_mesh_offset:
 

@@ -1,11 +1,11 @@
-from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import dataclass, field
 from typing import Optional
 
 from grad_sdf.criterion import CriterionConfig
 from grad_sdf.dataset.data_config import DataConfig
 from grad_sdf.key_frame_set import KeyFrameSetConfig
 from grad_sdf.model import SdfNetworkConfig
+from grad_sdf.node.ros_confg import RosConfig
 from grad_sdf.utils.config_abc import ConfigABC
 from grad_sdf.utils.sampling import SampleRaysConfig
 
@@ -31,13 +31,22 @@ class TrainerConfig(ConfigABC):
     lr: float = 0.01
     grad_method: str = "finite_difference"  # autodiff | finite_difference
     finite_difference_eps: float = 0.03
-    final_iterations: int = 0  # number of iterations after all frames are processed, 0 means no extra iterations
+    final_iterations: int = (
+        0  # number of iterations after all frames are processed, 0 means no extra iterations
+    )
     save_mesh: bool = True  # whether to save the final mesh
     mesh_resolution: float = 0.0125
     mesh_iso_value: float = 0.0
     clean_mesh: bool = True
     save_slice: bool = True
-    slice_center: Optional[list] = None  # if None, use the center of the scene bounding box
-    ckpt_interval: int = -1  # interval to save checkpoints, -1 means no intermediate checkpoints
+    slice_center: Optional[list] = (
+        None  # if None, use the center of the scene bounding box
+    )
+    ckpt_interval: int = (
+        -1
+    )  # interval to save checkpoints, -1 means no intermediate checkpoints
     profiling: bool = False
     profiling_verbose: bool = False
+    frozen_model_path: Optional[str] = None
+    ros: RosConfig = field(default_factory=RosConfig)
+

@@ -24,6 +24,9 @@ class GradSdfEvaluator(EvaluatorBase):
         model_path: str | None = None,
         model_input_offset: list[float] = None,
         device: str = "cuda",
+        absolute_sdf: bool = False,
+        grad_err_outlier_threshold: float = 0.5,
+        interactive: bool = False,
     ):
         """
         Args:
@@ -34,6 +37,9 @@ class GradSdfEvaluator(EvaluatorBase):
             model_path: optional, if model is not provided, load the model from this path
             model_input_offset: optional offset to apply to the model input
             device: device to run the model on
+            absolute_sdf: whether to take absolute value of SDF for metrics computation
+            grad_err_outlier_threshold: threshold to filter out outliers in gradient error when computing metrics
+            interactive: whether to run some interactive visualization
         """
         self.batch_size = batch_size
         self.clean_mesh = clean_mesh
@@ -45,7 +51,10 @@ class GradSdfEvaluator(EvaluatorBase):
             model,
             model_path,
             self.create_model,
-            device,
+            device=device,
+            absolute_sdf=absolute_sdf,
+            grad_err_outlier_threshold=grad_err_outlier_threshold,
+            interactive=interactive,
         )
 
         self.model: SdfNetwork
@@ -115,7 +124,8 @@ class GradSdfEvaluator(EvaluatorBase):
             j = min(i + bs, points.shape[0])
             points_batch = points[i:j].to(self.device)
             points_batch.requires_grad_(auto_grad)
-            voxel_indices_batch, sdf_prior_batch, sdf_residual_batch, sdf_pred_batch = model(points_batch)
+            voxel_indices_batch, sdf_prior_batch, sdf_residual_batch, _ = model(points_batch)
+            sdf_pred_batch = sdf_prior_batch + sdf_residual_batch
 
             if get_grad:
                 if auto_grad:
@@ -140,7 +150,7 @@ class GradSdfEvaluator(EvaluatorBase):
                     sdf_prior_grad_batch = torch.empty_like(points_batch)
                     for k in range(3):
                         offset = torch.zeros((3,), device=points_batch.device)
-                        offset[i] = finite_diff_eps
+                        offset[k] = finite_diff_eps
                         offset = offset.view(*[1] * (points_batch.ndim - 1), 3)
                         _, sdf_prior_plus, _, sdf_plus = model(points_batch + offset)
                         _, sdf_prior_minus, _, sdf_minus = model(points_batch - offset)
@@ -229,17 +239,21 @@ def main():
     parser.add_argument("--iso-value", type=float, default=0.0)
 
     parser.add_argument("--sdf-and-grad-metrics", action="store_true")
+    parser.add_argument("--absolute-sdf", action="store_true", help="Whether to take absolute value of SDF for metrics computation")
     parser.add_argument("--test-set-dir", type=str, help="Directory of the test set")
     parser.add_argument("--sdf-fields", type=str, nargs="+", default=["sdf", "sdf_prior"])
     parser.add_argument("--grad-method", type=str, default="autograd", choices=["autograd", "finite_difference"])
     parser.add_argument("--finite-difference-eps", type=float, default=0.001)
+    parser.add_argument("--grad-err-outlier-threshold", type=float, default=np.deg2rad(25).item())
 
     parser.add_argument("--mesh-metrics", action="store_true")
     parser.add_argument("--pred-mesh-paths", type=str, nargs="+")
     parser.add_argument("--gt-mesh-path", type=str, help="Path to the ground truth mesh file")
+    parser.add_argument("--gt-pcd-path", type=str, help="Path to the ground truth point cloud file")
     parser.add_argument("--f1-threshold", type=float, default=0.05)
     parser.add_argument("--num-points", type=int, default=200_000)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--interactive", action="store_true")
 
     args = parser.parse_args()
 
@@ -262,6 +276,8 @@ def main():
         # the test data is not offset, so we need to offset the model input
         model_input_offset=offset if args.apply_dataset_offset else None,
         device=args.device,
+        grad_err_outlier_threshold=args.grad_err_outlier_threshold,
+        interactive=args.interactive,
     )
 
     if args.extract_grid:
@@ -331,20 +347,35 @@ def main():
             ), "No extracted meshes found. Please provide --pred-mesh-paths or use --extract-mesh"
             pred_mesh_paths = mesh_files
 
-        assert os.path.exists(args.gt_mesh_path), f"Ground truth mesh file {args.gt_mesh_path} does not exist"
+        use_pcd_gt = args.gt_pcd_path is not None
+        if use_pcd_gt:
+            assert os.path.exists(args.gt_pcd_path), f"Ground truth point cloud file {args.gt_pcd_path} does not exist"
+        else:
+            assert args.gt_mesh_path is not None, "Provide --gt-mesh-path or --gt-pcd-path for mesh metrics"
+            assert os.path.exists(args.gt_mesh_path), f"Ground truth mesh file {args.gt_mesh_path} does not exist"
 
         df = None
         for pred_mesh_path in pred_mesh_paths:
             assert os.path.exists(pred_mesh_path), f"Predicted mesh file {pred_mesh_path} does not exist"
 
-            mesh_metrics = evaluator.mesh_metrics(
-                pred_mesh_path=pred_mesh_path,
-                gt_mesh_path=args.gt_mesh_path,
-                gt_mesh_offset=trainer_cfg.data.dataset_args.get("offset", None),
-                threshold=args.f1_threshold,
-                num_samples=args.num_points,
-                seed=args.seed,
-            )
+            if use_pcd_gt:
+                mesh_metrics = evaluator.mesh_metrics_pointcloud_gt(
+                    pred_mesh_path=pred_mesh_path,
+                    gt_pointcloud_path=args.gt_pcd_path,
+                    gt_pointcloud_offset=offset,
+                    threshold=args.f1_threshold,
+                    num_samples=args.num_points,
+                    seed=args.seed,
+                )
+            else:
+                mesh_metrics = evaluator.mesh_metrics(
+                    pred_mesh_path=pred_mesh_path,
+                    gt_mesh_path=args.gt_mesh_path,
+                    gt_mesh_offset=offset,
+                    threshold=args.f1_threshold,
+                    num_samples=args.num_points,
+                    seed=args.seed,
+                )
             mesh_metrics = flatten_dict(mesh_metrics)
 
             if df is None:

@@ -4,19 +4,18 @@ from typing import Callable, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
-from tqdm import tqdm
-
 from grad_sdf import torch
 from grad_sdf.criterion import Criterion
 from grad_sdf.evaluator_grad_sdf import GradSdfEvaluator
 from grad_sdf.frame import Frame
 from grad_sdf.key_frame_set import KeyFrameSet
+from grad_sdf.utils.import_util import get_dataset
 from grad_sdf.loggers import BasicLogger
 from grad_sdf.model import SdfNetwork
 from grad_sdf.trainer_config import TrainerConfig
-from grad_sdf.utils.import_util import get_dataset
 from grad_sdf.utils.profiling import GpuTimer
 from grad_sdf.utils.sampling import SampleResults, generate_sdf_samples
+from tqdm import tqdm
 
 
 class Trainer:
@@ -28,8 +27,8 @@ class Trainer:
         self.data_stream = get_dataset(cfg.data.dataset_name, cfg.data.dataset_args)
 
         # set the bound automatically
-        self.cfg.model.residual_net_cfg.bound_min = (self.data_stream.bound_min - 0.15).cpu().tolist()
-        self.cfg.model.residual_net_cfg.bound_max = (self.data_stream.bound_max + 0.15).cpu().tolist()
+        self.cfg.model.residual_net_cfg.bound_min = (self.data_stream.bound_min - 0.1).cpu().tolist()
+        self.cfg.model.residual_net_cfg.bound_max = (self.data_stream.bound_max + 0.1).cpu().tolist()
 
         if self.cfg.data.end_frame < 0:
             self.cfg.data.end_frame = len(self.data_stream)
@@ -42,11 +41,12 @@ class Trainer:
             max_num_voxels=self.cfg.model.octree_cfg.init_voxel_num,
             device=self.cfg.device,
         )
-        self.model = SdfNetwork(cfg.model)
+        self.model = SdfNetwork(self.cfg.model)
         self.model.to(self.cfg.device)
 
         self.logger = BasicLogger(cfg.log_dir, cfg.exp_name, cfg.as_dict())
 
+        # Handle offset whether in dataset_args or directly in data
         self.scene_offset = torch.tensor(self.cfg.data.offset)
         self.epoch = 0
         self.global_step = 0
@@ -84,7 +84,7 @@ class Trainer:
         self.training_frame_start_callback: Callable[[Trainer, Frame], bool] = None  # type: ignore
         self.training_end_callback: Callable[[Trainer], None] = None  # type: ignore
 
-        self.evaluater = GradSdfEvaluator(
+        self.evaluator = GradSdfEvaluator(
             batch_size=self.cfg.batch_size,
             clean_mesh=self.cfg.clean_mesh,
             model_cfg=self.cfg.model,
@@ -230,6 +230,7 @@ class Trainer:
                 voxel_indices_minus = self.find_voxel_indices(offset_points_minus)  # (n, m, 3)
         with self.timer_find_voxel_indices_sampled_xyz:
             voxel_indices = self.find_voxel_indices(self.samples.sampled_xyz)  # (n, m)
+            assert voxel_indices.min() != -1, "voxel_indices has -1"
 
         bs = int(self.cfg.batch_size / self.samples.sampled_xyz.shape[1])
 
@@ -239,38 +240,51 @@ class Trainer:
                 with torch.enable_grad():
                     self.optimizer.zero_grad()
                     sdf_pred_all = []
+                    sdf_prior_all = []
                     sdf_grad_all = []
+                    sdf_prior_grad_all = []
                     for i in range(0, num_rays, bs):
                         j = min(i + bs, num_rays)
                         points = self.samples.sampled_xyz[i:j]  # (b, m, 3)
                         voxel_indices_batch = voxel_indices[i:j]
-                        _, sdf_prior, sdf_residual, sdf_pred = self.model(points, voxel_indices_batch)
+                        _, sdf_prior, _, sdf_pred = self.model(points, voxel_indices_batch)
                         if self.cfg.grad_method == "autodiff":
                             sdf_grad = self.compute_sdf_grad_autodiff(points, sdf_pred)
+                            sdf_prior_grad = self.compute_sdf_grad_autodiff(points, sdf_prior)
                         else:
-                            sdf_grad = self.compute_sdf_grad_finite_difference(
+                            sdf_grad, sdf_prior_grad = self.compute_sdf_grad_finite_difference(
                                 points=points,
                                 offset_points_plus=offset_points_plus[i:j],
                                 offset_points_minus=offset_points_minus[i:j],
                                 voxel_indices_plus=voxel_indices_plus[i:j],
                                 voxel_indices_minus=voxel_indices_minus[i:j],
-                            )[0]
+                            )[:2]
 
-                        sdf_pred_all.append(sdf_pred)  # (b, m)
+                        sdf_pred_all.append(sdf_pred)
+                        sdf_prior_all.append(sdf_prior)  # (b, m)
                         sdf_grad_all.append(sdf_grad)  # (b, m, 3)
+                        sdf_prior_grad_all.append(sdf_prior_grad)  # (b, m, 3)
 
                     if len(sdf_pred_all) == 1:
                         sdf_pred_all = sdf_pred_all[0]
+                        sdf_prior_all = sdf_prior_all[0]
                         sdf_grad_all = sdf_grad_all[0]
+                        sdf_prior_grad_all = sdf_prior_grad_all[0]
                     else:
                         sdf_pred_all = torch.cat(sdf_pred_all, dim=0)
+                        sdf_prior_all = torch.cat(sdf_prior_all, dim=0)
                         sdf_grad_all = torch.cat(sdf_grad_all, dim=0)
+                        sdf_prior_grad_all = torch.cat(sdf_prior_grad_all, dim=0)
 
                     loss, self.loss_dict = self.criterion(
                         pred_sdf=sdf_pred_all,
+                        pred_prior=sdf_prior_all,
                         pred_grad=sdf_grad_all,
+                        pred_prior_grad=sdf_prior_grad_all,
                         gt_sdf_perturb=self.samples.perturbation_sdf,
                         gt_sdf_stratified=self.samples.stratified_sdf,
+                        positive_perturbation_mask=self.samples.positive_perturbation_mask,
+                        perturb_sigma=self.cfg.sample_rays.sigma_s,
                     )
                     loss.backward()
                     self.optimizer.step()
@@ -342,6 +356,7 @@ class Trainer:
 
         Returns:
             (..., 3) gradient of the SDF at the given points
+            (..., 3) gradient of the SDF prior at the given points
             (..., 3, 3) offset_points_plus
             (..., 3, 3) offset_points_minus
             (..., 3) voxel_indices_plus
@@ -350,12 +365,20 @@ class Trainer:
         eps = self.cfg.finite_difference_eps
         if offset_points_plus is None or offset_points_minus is None:
             offset_points_plus, offset_points_minus = self.compute_offset_points_for_finite_diff(points)
-        voxel_indices_plus, _, _, sdf_plus = self.model(offset_points_plus, voxel_indices_plus)
-        voxel_indices_minus, _, _, sdf_minus = self.model(offset_points_minus, voxel_indices_minus)
+        voxel_indices_plus, sdf_prior_plus, _, sdf_plus = self.model(offset_points_plus, voxel_indices_plus)
+        voxel_indices_minus, sdf_prior_minus, _, sdf_minus = self.model(offset_points_minus, voxel_indices_minus)
 
         grad = (sdf_plus - sdf_minus) / (2 * eps)
+        prior_grad = (sdf_prior_plus - sdf_prior_minus) / (2 * eps)
 
-        return grad, offset_points_plus, offset_points_minus, voxel_indices_plus, voxel_indices_minus
+        return (
+            grad,
+            prior_grad,
+            offset_points_plus,
+            offset_points_minus,
+            voxel_indices_plus,
+            voxel_indices_minus,
+        )
 
     @torch.no_grad()
     def save_model(self, path: str):
@@ -382,7 +405,7 @@ class Trainer:
         bound_max = self.cfg.model.residual_net_cfg.bound_max
 
         if self.cfg.save_mesh:
-            mesh_prior, mesh = self.evaluater.extract_mesh(
+            mesh_prior, mesh = self.evaluator.extract_mesh(
                 bound_min=bound_min,
                 bound_max=bound_max,
                 grid_resolution=self.cfg.mesh_resolution,
@@ -421,7 +444,7 @@ class Trainer:
                     pos = 0.5 * (bound_min[axis] + bound_max[axis])
                 else:
                     pos = self.cfg.slice_center[axis]
-                slice_result = self.evaluater.extract_slice(
+                slice_result = self.evaluator.extract_slice(
                     axis=axis,
                     pos=pos,
                     resolution=self.cfg.mesh_resolution,
@@ -438,7 +461,12 @@ class Trainer:
                     plt.figure()
                     im = plt.imshow(
                         slice_values,
-                        extent=(slice_bound[0][0], slice_bound[1][0], slice_bound[0][1], slice_bound[1][1]),
+                        extent=(
+                            slice_bound[0][0],
+                            slice_bound[1][0],
+                            slice_bound[0][1],
+                            slice_bound[1][1],
+                        ),
                         origin="lower",
                         cmap="jet",
                     )
