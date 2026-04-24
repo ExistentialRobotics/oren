@@ -1,4 +1,4 @@
-$\nabla$-SDF: Learning Euclidean Signed Distance Functions Online with Gradient-Augmented Octree Interpolation and Neural Residual
+OREN: Octree Residual Network for Real-Time Euclidean Signed Distance Mapping
 =============
 
 <p align="center">
@@ -9,7 +9,7 @@ $\nabla$-SDF: Learning Euclidean Signed Distance Functions Online with Gradient-
 <a href="https://github.com/ExistentialRobotics/grad-sdf/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" /></a>
 </p>
 
-This repository contains the code for the paper: **$\nabla$-SDF: Learning Euclidean Signed Distance Functions Online with Gradient-Augmented Octree Interpolation and Neural Residual**.
+This repository contains the code for the paper: **OREN: Octree Residual Network for Real-Time Euclidean Signed Distance Mapping**.
 
 This branch targets running the grad-SDF mapping as a ROS 2 node.
 
