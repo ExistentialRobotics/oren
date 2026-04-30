@@ -11,9 +11,9 @@ OREN: Octree Residual Network for Real-Time Euclidean Signed Distance Mapping
 
 This repository contains the code for the paper: **OREN: Octree Residual Network for Real-Time Euclidean Signed Distance Mapping**.
 
-This branch targets running the grad-SDF mapping as a ROS 2 node.
+This repo could run on Replica(NICE-SLAM format) dataset and run mapping as a ROS 2 node.
 
-$\nabla$-SDF is a hybrid SDF reconstruction framework that combines gradient-augmented octree interpolation with an implicit neural residual to achieve efficient, continuous non-truncated, and highly accurate Euclidean SDF mapping..
+OREN is a hybrid SDF reconstruction framework that combines gradient-augmented octree interpolation with an implicit neural residual to achieve efficient, continuous non-truncated, and highly accurate Euclidean SDF mapping..
 
 <div align="center">
   <img src="assets/grad-sdf.gif" width="600" alt="SDF Mapping Demo">
