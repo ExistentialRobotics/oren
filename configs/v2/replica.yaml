@@ -1,4 +1,4 @@
-base_config: trainer.yaml
+base_config: trainer-replica.yaml
 data:
     dataset_name: replica
     dataset_args:

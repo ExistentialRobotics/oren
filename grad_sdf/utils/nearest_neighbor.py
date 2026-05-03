@@ -1,8 +1,9 @@
 from typing import Tuple
 
-from scipy.spatial import cKDTree
 import torch
 from pytorch3d.ops import knn_points
+from scipy.spatial import cKDTree
+
 from grad_sdf.utils.profiling import CpuTimer
 
 

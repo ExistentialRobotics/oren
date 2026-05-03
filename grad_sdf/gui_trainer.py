@@ -26,8 +26,8 @@ class GuiTrainer:
         self.trainer.training_end_callback = self.training_end_callback
 
         if copy_scene_bound_to_gui:
-            self.gui_cfg.scene_bound_min = self.trainer_cfg.model.residual_net_cfg.bound_min
-            self.gui_cfg.scene_bound_max = self.trainer_cfg.model.residual_net_cfg.bound_max
+            self.gui_cfg.scene_bound_min = self.trainer_cfg.bound_min
+            self.gui_cfg.scene_bound_max = self.trainer_cfg.bound_max
             tqdm.write(
                 f"[Training] Copied scene bounds from trainer config to GUI config: {self.gui_cfg.scene_bound_min},"
                 f" {self.gui_cfg.scene_bound_max}"
@@ -396,7 +396,6 @@ def main():
     parser.add_argument("--exp-name", type=str, help="experiment name")
     parser.add_argument("--data-path", type=str, help="path to dataset")
     parser.add_argument("--gt-mesh-path", type=str, help="path to ground truth mesh file")
-    parser.add_argument("--apply-offset-to-gt-mesh", action="store_true", help="apply scene offset to GT mesh")
     parser.add_argument(
         "--copy-scene-bound-to-gui",
         action="store_true",
@@ -418,11 +417,6 @@ def main():
 
     trainer_cfg = TrainerConfig.from_yaml(args.trainer_config)
     trainer_cfg.profiling = True  # enable profiling for GUI
-    if args.apply_offset_to_gt_mesh:
-        offset = trainer_cfg.data.dataset_args.get("offset", None)
-        if offset is not None:
-            gui_cfg.gt_mesh_offset = offset
-            tqdm.write(f"[Training] Applied offset {offset} to GT mesh in GUI.")
 
     if args.exp_name is not None:
         trainer_cfg.exp_name = args.exp_name

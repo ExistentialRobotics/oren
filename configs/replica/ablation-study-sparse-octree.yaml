@@ -1,6 +1,0 @@
-base_config: ablation-study-base.yaml
-exp_name: sparse-octree
-model:
-    octree_cfg:
-        semi_sparse_depth: 0
-        independent_smallest_leaf_vertex: false

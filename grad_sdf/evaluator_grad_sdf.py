@@ -22,7 +22,6 @@ class GradSdfEvaluator(EvaluatorBase):
         model_cfg: SdfNetworkConfig | None = None,
         model: torch.nn.Module | None = None,
         model_path: str | None = None,
-        model_input_offset: list[float] = None,
         device: str = "cuda",
         absolute_sdf: bool = False,
         grad_err_outlier_threshold: float = 0.5,
@@ -35,7 +34,6 @@ class GradSdfEvaluator(EvaluatorBase):
             model_cfg: configuration for the SdfNetwork, required if model is not provided
             model: optional, if provided, use this model
             model_path: optional, if model is not provided, load the model from this path
-            model_input_offset: optional offset to apply to the model input
             device: device to run the model on
             absolute_sdf: whether to take absolute value of SDF for metrics computation
             grad_err_outlier_threshold: threshold to filter out outliers in gradient error when computing metrics
@@ -44,7 +42,6 @@ class GradSdfEvaluator(EvaluatorBase):
         self.batch_size = batch_size
         self.clean_mesh = clean_mesh
         self.model_cfg = model_cfg
-        self.model_input_offset = model_input_offset
 
         super().__init__(
             self.forward_model,
@@ -109,9 +106,6 @@ class GradSdfEvaluator(EvaluatorBase):
             bs = points.shape[0]
         else:
             bs = int(self.batch_size * 3 * points.shape[0] / points.numel()) + 1
-
-        if self.model_input_offset is not None:
-            points = points + torch.tensor(self.model_input_offset, device=points.device).to(points.dtype)
 
         voxel_indices = []
         sdf_prior = []
@@ -226,8 +220,6 @@ def main():
     parser.add_argument("--batch-size", type=int, default=40960)
     parser.add_argument("--device", type=str, default="cuda")
 
-    parser.add_argument("--apply-dataset-offset", action="store_true")
-
     parser.add_argument("--extract-grid", action="store_true")
     parser.add_argument("--grid-resolution", type=float, default=0.0125)
     parser.add_argument("--bound-min", type=float, nargs=3)
@@ -239,7 +231,11 @@ def main():
     parser.add_argument("--iso-value", type=float, default=0.0)
 
     parser.add_argument("--sdf-and-grad-metrics", action="store_true")
-    parser.add_argument("--absolute-sdf", action="store_true", help="Whether to take absolute value of SDF for metrics computation")
+    parser.add_argument(
+        "--absolute-sdf",
+        action="store_true",
+        help="Whether to take absolute value of SDF for metrics computation",
+    )
     parser.add_argument("--test-set-dir", type=str, help="Directory of the test set")
     parser.add_argument("--sdf-fields", type=str, nargs="+", default=["sdf", "sdf_prior"])
     parser.add_argument("--grad-method", type=str, default="autograd", choices=["autograd", "finite_difference"])
@@ -265,16 +261,11 @@ def main():
         output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
 
-    offset = trainer_cfg.data.dataset_args.get("offset", None)
-
     evaluator = GradSdfEvaluator(
         batch_size=args.batch_size,
         clean_mesh=args.clean_mesh,
         model_cfg=trainer_cfg.model,
         model_path=args.model_path,
-        # add offset to the model input if specified in the dataset args
-        # the test data is not offset, so we need to offset the model input
-        model_input_offset=offset if args.apply_dataset_offset else None,
         device=args.device,
         grad_err_outlier_threshold=args.grad_err_outlier_threshold,
         interactive=args.interactive,
@@ -284,9 +275,9 @@ def main():
         bound_min = args.bound_min
         bound_max = args.bound_max
         if bound_min is None:
-            bound_min = trainer_cfg.model.residual_net_cfg.bound_min
+            bound_min = trainer_cfg.bound_min
         if bound_max is None:
-            bound_max = trainer_cfg.model.residual_net_cfg.bound_max
+            bound_max = trainer_cfg.bound_max
         results = evaluator.extract_sdf_grid(
             bound_min=bound_min,
             bound_max=bound_max,
@@ -305,9 +296,9 @@ def main():
         bound_min = args.bound_min
         bound_max = args.bound_max
         if bound_min is None:
-            bound_min = trainer_cfg.model.residual_net_cfg.bound_min
+            bound_min = trainer_cfg.bound_min
         if bound_max is None:
-            bound_max = trainer_cfg.model.residual_net_cfg.bound_max
+            bound_max = trainer_cfg.bound_max
         meshes = evaluator.extract_mesh(
             bound_min=bound_min,
             bound_max=bound_max,
@@ -362,8 +353,7 @@ def main():
                 mesh_metrics = evaluator.mesh_metrics_pointcloud_gt(
                     pred_mesh_path=pred_mesh_path,
                     gt_pointcloud_path=args.gt_pcd_path,
-                    gt_pointcloud_offset=offset,
-                    threshold=args.f1_threshold,
+                        threshold=args.f1_threshold,
                     num_samples=args.num_points,
                     seed=args.seed,
                 )
@@ -371,7 +361,6 @@ def main():
                 mesh_metrics = evaluator.mesh_metrics(
                     pred_mesh_path=pred_mesh_path,
                     gt_mesh_path=args.gt_mesh_path,
-                    gt_mesh_offset=offset,
                     threshold=args.f1_threshold,
                     num_samples=args.num_points,
                     seed=args.seed,

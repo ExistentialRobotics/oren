@@ -10,11 +10,12 @@ data:
         data_path: ""
         min_depth: 0.0
         max_depth: -1.0
-        offset: [0.0, 0.0, 0.0]
         bound_min:
         bound_max:
     start_frame: 0
     end_frame: -1
+bound_min:
+bound_max:
 key_frame_set:
     identifier: grad_sdf.key_frame_set.KeyFrameSetConfig
     insert_method: intersection
@@ -36,16 +37,13 @@ model:
         gradient_augmentation: true
     residual_net_cfg:
         identifier: grad_sdf.residual_net.ResidualNetConfig
-        bound_min:
-        bound_max:
         resolution: 0.1
         num_levels: 4
         feature_dims: 2
         log2_T: 19
         per_level_scale: 2.0
         mlp_activation: ReLU
-        hidden_dims: 64
-        n_hidden_layers: 2
+        hidden_dims: [64, 64]
         scale_with_bound: true
         output_sdf_scale: 0.1
 criterion:

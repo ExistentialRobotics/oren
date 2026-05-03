@@ -7,6 +7,8 @@ if use_erl_geometry:
     try:
         import numpy as np
         from erl_geometry import MarchingCubes, torch
+
+        # import open3d after erl_geometry to avoid potential conflicts in C++ extensions
         import open3d as o3d
 
         erl_geometry_loaded = True
@@ -19,18 +21,19 @@ if use_erl_geometry:
         import numpy as np
         import open3d as o3d
         import torch
+
         from grad_sdf.utils.mcubes_wrapper import MarchingCubesWrapper as MarchingCubes
 else:
     erl_geometry_loaded = False
     import numpy as np
     import open3d as o3d
     import torch
+
     from grad_sdf.utils.mcubes_wrapper import MarchingCubesWrapper as MarchingCubes
 
 # GUI and rendering modules from Open3D
 # noinspection PyPep8
 from open3d.visualization import gui as o3d_gui
-# noinspection PyPep8
 from open3d.visualization import rendering as o3d_rendering
 
 __all__ = [

@@ -16,7 +16,7 @@ namespace erl::geometry {
     FindVoxelIndicesTorchCUDA(
         const torch::Tensor &codes,
         const int dims,
-        const int level,
+        const int n_levels,
         const torch::Tensor &children,
         torch::Tensor &voxel_indices) {
 
@@ -51,7 +51,7 @@ namespace erl::geometry {
 
         switch (codes.scalar_type()) {
             case torch::kUInt32: {
-                TORCH_CHECK(dims * level <= 32, "For UInt32 codes, max level is 32 / dims.");
+                TORCH_CHECK(dims * n_levels <= 32, "For UInt32 codes, max level is 32 / dims.");
                 if (dims == 2) {
                     AT_DISPATCH_INTEGRAL_TYPES(
                         children.scalar_type(),
@@ -59,7 +59,7 @@ namespace erl::geometry {
                         [&] {
                             FindVoxelIndicesKernel<scalar_t, uint32_t, 2><<<blocks, threads>>>(
                                 codes.data_ptr<uint32_t>(),
-                                level,
+                                n_levels,
                                 children.data_ptr<scalar_t>(),
                                 voxel_indices.data_ptr<scalar_t>(),
                                 b);
@@ -71,7 +71,7 @@ namespace erl::geometry {
                         [&] {
                             FindVoxelIndicesKernel<scalar_t, uint32_t, 3><<<blocks, threads>>>(
                                 codes.data_ptr<uint32_t>(),
-                                level,
+                                n_levels,
                                 children.data_ptr<scalar_t>(),
                                 voxel_indices.data_ptr<scalar_t>(),
                                 b);
@@ -81,7 +81,7 @@ namespace erl::geometry {
                 break;
             }
             case torch::kUInt64: {
-                TORCH_CHECK(dims * level <= 64, "For UInt64 codes, max level is 64 / dims.");
+                TORCH_CHECK(dims * n_levels <= 64, "For UInt64 codes, max level is 64 / dims.");
                 if (dims == 2) {
                     AT_DISPATCH_INTEGRAL_TYPES(
                         children.scalar_type(),
@@ -89,7 +89,7 @@ namespace erl::geometry {
                         [&] {
                             FindVoxelIndicesKernel<scalar_t, uint64_t, 2><<<blocks, threads>>>(
                                 codes.data_ptr<uint64_t>(),
-                                level,
+                                n_levels,
                                 children.data_ptr<scalar_t>(),
                                 voxel_indices.data_ptr<scalar_t>(),
                                 b);
@@ -101,7 +101,7 @@ namespace erl::geometry {
                         [&] {
                             FindVoxelIndicesKernel<scalar_t, uint64_t, 3><<<blocks, threads>>>(
                                 codes.data_ptr<uint64_t>(),
-                                level,
+                                n_levels,
                                 children.data_ptr<scalar_t>(),
                                 voxel_indices.data_ptr<scalar_t>(),
                                 b);

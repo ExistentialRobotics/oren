@@ -17,14 +17,12 @@ class DataLoader(Dataset):
         data_path: str,
         min_depth: float = 0.0,
         max_depth: float = -1.0,
-        offset: torch.Tensor = None,
         bound_min: torch.Tensor = None,
         bound_max: torch.Tensor = None,
     ):
         self.data_path = data_path
         self.min_depth = min_depth
         self.max_depth = max_depth
-        self.offset = offset
         self.bound_min = bound_min
         self.bound_max = bound_max
 
@@ -36,10 +34,6 @@ class DataLoader(Dataset):
             self.bound_min = np.min(mesh.vertices[:], axis=0).flatten().tolist()
             self.bound_max = np.max(mesh.vertices[:], axis=0).flatten().tolist()
 
-        if self.offset is None:
-            self.offset: torch.Tensor = torch.zeros(3)
-        else:
-            self.offset: torch.Tensor = torch.tensor(self.offset).float()
         if self.bound_min is not None:
             assert self.bound_max is not None
             self.bound_min = torch.tensor(self.bound_min).float()
@@ -90,7 +84,7 @@ class DataLoader(Dataset):
     def __getitem__(self, index):
         depth = self.load_depth(index)
         pose = self.gt_pose[index]
-        frame = DepthFrame(index, depth, self.K, self.offset, pose)
+        frame = DepthFrame(index, depth, self.K, pose)
         if self.bound_min is not None and self.bound_max is not None:
             frame.apply_bound(self.bound_min, self.bound_max)
         return frame

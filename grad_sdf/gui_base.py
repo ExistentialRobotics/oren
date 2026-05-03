@@ -75,7 +75,6 @@ class GuiBaseConfig(ConfigABC):
     scene_bound_min: Optional[list] = None
     scene_bound_max: Optional[list] = None
     gt_mesh_path: Optional[str] = None
-    gt_mesh_offset: Optional[list] = None
 
     mesh_remove_ceiling: bool = True
     mesh_ceiling_thickness: float = 0.2
@@ -662,8 +661,6 @@ class GuiBase:
                 self.cfg.scene_bound_min = self.gt_mesh.get_min_bound().tolist()
             if self.cfg.scene_bound_max is None:
                 self.cfg.scene_bound_max = self.gt_mesh.get_max_bound().tolist()
-            if self.cfg.gt_mesh_offset is not None:
-                self.gt_mesh = self.gt_mesh.translate(self.cfg.gt_mesh_offset)
             if self.cfg.mesh_remove_ceiling:
                 self.remove_ceiling_from_mesh(self.gt_mesh)
         self.org_cam = o3d.geometry.LineSet()  # camera of identity pose
@@ -2313,8 +2310,7 @@ class GuiBase:
         extrinsics = np.array(view["extrinsics"])
         bounds = deepcopy(self.widget3d.scene.bounding_box)
         bounds = bounds.scale(1.2, bounds.get_center())
-        self.widget3d.setup_camera(intrinsics, extrinsics, self.widget3d_width, self.widget3d_height,
-                                   bounds)  # type: ignore
+        self.widget3d.setup_camera(intrinsics, extrinsics, self.widget3d_width, self.widget3d_height, bounds)
 
     @classmethod
     def run(cls, *args, **kwargs):
@@ -2510,7 +2506,7 @@ class GuiBase:
                         self.sample_perturbed_name,
                         self.sample_perturbed,
                         self.checkbox_show_sample_perturbed.checked,
-                        self.data_packet.sampled_xyz[:, n_free: n_free + n_perturbed],
+                        self.data_packet.sampled_xyz[:, n_free : n_free + n_perturbed],
                         self.cfg.sample_color_perturbed,
                     )
                 if n_free > 0:

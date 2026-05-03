@@ -27,6 +27,18 @@ class SampleRaysConfig(ConfigABC):
     surface_margin: float = 0.10  # additional range beyond surface
     sigma_s: float = 0.05  # standard deviation for Gaussian sampling
 
+    def __post_init__(self):
+        assert self.n_stratified > 0, "n_stratified must be positive"
+        assert self.n_perturbed > 0, "n_perturbed must be positive"
+        assert self.depth_min > 0, "depth_min must be positive"
+        assert self.depth_max > self.depth_min, "depth_max must be greater than depth_min"
+        assert self.surface_margin >= 0, "surface_margin must be non-negative"
+        assert (
+            self.depth_min + self.surface_margin < self.depth_max
+        ), "depth_min + surface_margin must be less than depth_max"
+        assert self.sigma_s > 0, "sigma_s must be positive"
+        return super().__post_init__()
+
 
 @dataclass
 class SampleResults:
@@ -84,16 +96,20 @@ def generate_sdf_samples(
     # total_samples = n_stratified + n_perturbed + 1
 
     # Create valid mask to filter out invalid depth values (0, negative, or NaN)
+    # Valid rays must have depth in (depth_min + surface_margin, depth_max) to
+    # ensure we can sample both free space and near-surface points.
     valid_mask = (
-        (depth_samples_all > 0) & (depth_samples_all < depth_max) & torch.isfinite(depth_samples_all)
-    )  # (num_rays,)
+        (depth_samples_all > depth_min + surface_margin)
+        & (depth_samples_all < depth_max)
+        & torch.isfinite(depth_samples_all)
+    )
     valid_indices = torch.nonzero(valid_mask, as_tuple=True)[0]  # (num_valid_rays,)
     num_valid_rays = valid_indices.shape[0]
 
     # Extract only valid rays data
     rays_d_valid = rays_d_all[valid_indices]  # (num_valid_rays, 3)
     rays_o_valid = rays_o_all[valid_indices]  # (num_valid_rays, 3)
-    depth_samples_valid = depth_samples_all[valid_indices]  # (num_valid_rays,)
+    depth_samples_valid = depth_samples_all[valid_indices].flatten()  # (num_valid_rays,)
 
     #############################################################
     # 1. Stratified sampling (vectorized) - only for valid rays #
@@ -102,9 +118,6 @@ def generate_sdf_samples(
     # stratified sampling ensures coverage of free space.
 
     d_max = depth_samples_valid - surface_margin  # (num_valid_rays,)
-    # Ensure d_max > d_min
-    d_max = torch.where(d_max <= depth_min, depth_min + surface_margin, d_max)
-
     d_range = d_max - depth_min  # (num_valid_rays,)
 
     # Generate stratified samples for valid rays only
@@ -131,6 +144,8 @@ def generate_sdf_samples(
     # 2. perturbation by depth #
     ############################
     # Split perturbations: half in [-3*sigma_s, -sigma_s], half in [sigma_s, 3*sigma_s]
+    # [-sigma_s, sigma_s] is avoided to ensure perturbations are not too close to the surface.
+    # Considering sensor noise, this makes perturbed samples more likely to have correct sdf signs.
     n_negative = n_perturbed // 2  # samples before surface
     n_positive = n_perturbed - n_negative  # samples after surface
 
@@ -141,6 +156,9 @@ def generate_sdf_samples(
     # Positive perturbations: [sigma_s, 3*sigma_s]
     positive_offsets = torch.rand(num_valid_rays, n_positive, device="cpu").to(device)  # [0, 1]
     positive_offsets = sigma_s + positive_offsets * (2 * sigma_s)  # [sigma_s, 3*sigma_s]
+
+    # Note that:
+    # positive offsets cause negative sdf values, while negative offsets cause positive sdf values.
 
     # Combine offsets and compute depths
     perturbation_offsets = torch.cat([negative_offsets, positive_offsets], dim=1)  # (num_valid_rays, n_perturbed)
@@ -158,7 +176,7 @@ def generate_sdf_samples(
     ######################
     # 3. Surface samples #
     ######################
-    surface_samples = depth_samples_valid.unsqueeze(1)  # (num_valid_rays, 1)
+    surface_samples = depth_samples_valid.view(-1, 1)  # (num_valid_rays, 1)
 
     #######################
     # Combine all samples #

@@ -7,7 +7,7 @@ namespace erl::geometry {
     FindVoxelIndicesTorchCUDA(
         const torch::Tensor &codes,
         int dims,
-        int level,
+        int n_levels,
         const torch::Tensor &children,
         torch::Tensor &voxel_indices);
 }

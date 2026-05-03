@@ -11,7 +11,7 @@ namespace erl::geometry {
     __global__ void
     FindVoxelIndicesKernel(
         const MortonType *__restrict__ codes,
-        int level,
+        int n_levels,
         const IndexType *__restrict__ children,
         IndexType *__restrict__ indices,
         const size_t n) {
@@ -20,13 +20,13 @@ namespace erl::geometry {
         if (i >= n) { return; }
 
         const MortonType code = codes[i];
-        uint64_t shift = level * Dim;
+        uint64_t shift = n_levels * Dim;
         uint64_t mask = ((1ul << Dim) - 1ul) << shift;
         IndexType &index = indices[i];
 
         index = 0;
 
-        while (level >= 0) {
+        while (n_levels >= 0) {
             const auto child_index = static_cast<int>((code & mask) >> shift) + (index << Dim);
             int child_val = children[child_index];
 
@@ -40,7 +40,7 @@ namespace erl::geometry {
             shift = valid * (shift - Dim) + invalid * shift;
             mask = valid * (mask >> Dim) + invalid * mask;
 
-            --level;
+            --n_levels;
         }
     }
 

@@ -38,6 +38,7 @@ class SemiSparseOctree(SemiSparseOctreeBase):
         Returns:
             voxels: (..., 3) voxel coordinates
         """
+        assert (points >= 0).all(), "Octree v1 does not support negative coordinates"
         voxels = torch.div(points, self.cfg.resolution, rounding_mode="floor").long()  # Divides each element
         return voxels
 

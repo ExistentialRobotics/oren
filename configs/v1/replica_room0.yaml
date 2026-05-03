@@ -6,12 +6,9 @@ base_config: trainer.yaml
 exp_name: replica_room0
 data:
     dataset_args:
-        data_path: "/home/daizhirui/DataArchive/Replica-SDF-aug/room0"
+        data_path: "replica/room0"
         max_depth: 10.0
-        offset: [4.4, 3.0, 2.0]
-        bound_min: [0.5, 0.5, 0.5]  # used to filter points out of bound after offset is applied
+        bound_min: [0.5, 0.5, 0.5]
         bound_max: [8.5, 5.5, 3.5]
-model:
-    residual_net_cfg:
-        bound_min: [0, 0, 0]
-        bound_max: [9.0, 6.0, 4.0]
+bound_min: [0, 0, 0]
+bound_max: [9.0, 6.0, 4.0]

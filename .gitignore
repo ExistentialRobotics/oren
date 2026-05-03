@@ -213,13 +213,15 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# CLAUDE
+CLAUDE.md
+.claude
+
 # Colcon and ROS 2
 colcon_logs/
 install/
 build/
 log/
 scripts/merge_metrics.py
-launch/
-
 script-for-paper/
 

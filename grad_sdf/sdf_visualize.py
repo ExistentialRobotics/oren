@@ -1,10 +1,12 @@
-import trimesh
-from grad_sdf.evaluator_grad_sdf import GradSdfEvaluator
 import argparse
-from grad_sdf.trainer_config import TrainerConfig
-import numpy as np
-from pysdf import SDF
+
 import matplotlib.pyplot as plt
+import numpy as np
+import trimesh
+from pysdf import SDF
+
+from grad_sdf.evaluator_grad_sdf import GradSdfEvaluator
+from grad_sdf.trainer_config import TrainerConfig
 
 
 def read_mesh(mesh_path: str) -> trimesh.Trimesh:

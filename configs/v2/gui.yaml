@@ -5,7 +5,7 @@ scene_height: 1440
 panel_split_ratio: 0.8
 
 view_option: from_file # options: [follow, keyboard, from_file]
-view_file: replica_room0_view.yaml
+view_file: replica_room0_view0.yaml
 objects: [scan, traj, current_cam, mesh]
 # scan, traj, kf_cams, current_cam, octree, sdf, sdf_prior, sdf_residual, mesh, mesh_prior,
 # gt_mesh, sample_surf, sample_perturb, sample_free, sample_extra
@@ -51,7 +51,6 @@ experiment_name: grad_sdf
 scene_bound_min: [-80.0, -80.0, -80.0]
 scene_bound_max: [80.0, 80.0, 80.0]
 gt_mesh_path:
-gt_mesh_offset:
 
 mesh_remove_ceiling: true
 mesh_ceiling_thickness: 0.6

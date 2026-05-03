@@ -10,11 +10,12 @@ data:
         data_path: "data/replica/room0"
         min_depth: 0.0
         max_depth: -1.0
-        offset: [0.0, 0.0, 0.0]
         bound_min:
         bound_max:
     start_frame: 0
     end_frame: -1
+bound_min: [-10, -10, -10] # will be overwritten by the dataset args
+bound_max: [10, 10, 10] # will be overwritten by the dataset args
 key_frame_set:
     identifier: grad_sdf.key_frame_set.KeyFrameSetConfig
     insert_method: intersection
@@ -37,14 +38,10 @@ model:
         residual_feature_dim: 3
         residual_num_levels: 1
         gradient_augmentation: true
-        independent_smallest_leaf_vertex: false
     residual_net_cfg:
         identifier: grad_sdf.residual_net.ResidualNetConfig
-        bound_min: [-10, -10, -10] # will be overwritten by the dataset args
-        bound_max: [10, 10, 10] # will be overwritten by the dataset args
         mlp_activation: LeakyReLU
-        hidden_dims: 32
-        n_hidden_layers: 2
+        hidden_dims: [32, 32]
         output_sdf_scale: 0.1
         input_feature_dim: 1 # will be overwritten by octree_cfg residual_feature_dim * residual_num_levels
 criterion:

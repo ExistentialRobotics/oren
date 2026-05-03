@@ -6,9 +6,9 @@
   <!-- <meta name="description" content="ICRA Paper"> -->
   <meta name="keywords" content="Signed Distance Functions, 3D Reconstruction, Octree, Neural Networks, Robotics">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Grad-SDF</title>
+  <title>OREN</title>
 
-  <link href="https://fonts.googleapis.com/css?family=Google+Sans%7CNoto+Sans%7CCastoro" rel="stylesheet">
+  <!-- <link href="https://fonts.googleapis.com/css?family=Google+Sans%7CNoto+Sans%7CCastoro" rel="stylesheet"> -->
 
   <link rel="stylesheet" href="static/css/bulma.min.css">
   <link rel="stylesheet" href="static/css/bulma-carousel.min.css">
@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="static/css/fontawesome.all.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
   <link rel="stylesheet" href="static/css/index.css">
-  <link rel="icon" href="https://scientistrocknroll.github.io/splatsdf/static/images/favicon.svg">
+  <!-- <link rel="icon" href="https://scientistrocknroll.github.io/splatsdf/static/images/favicon.svg"> -->
 
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
   <script defer src="static/js/fontawesome.all.min.js"></script>
@@ -65,8 +65,7 @@
         <div class="columns is-centered">
           <div class="column has-text-centered">
             <h1 class="title is-1 publication-title">
-              $\nabla$-SDF: Learning Euclidean Signed Distance Functions Online with
-              Gradient-Augmented Octree Interpolation and Neural Residual
+              OREN: Octree Residual Network for Real-Time Euclidean Signed Distance Mapping
             </h1>
             <div class="is-size-2 publication-authors">
               <span class="author-block">
@@ -83,15 +82,22 @@
 
             <div class="column has-text-centered">
               <div class="publication-links">
-                <a class="button is-link is-medium" href="https://arxiv.org/abs/2510.18999v1" target="_blank">
+                <a class="button is-link is-medium" href="https://arxiv.org/abs/2510.18999" target="_blank">
                   <span class="icon">
                     <i class="fas fa-file-pdf"></i>
                   </span>
                   <span>arXiv</span>
                 </a>
 
-                <a class="button is-dark is-medium" href="https://github.com/existentialRobotics/grad-sdf"
-                  target="_blank" rel="noopener noreferrer" aria-label="Open repository">
+                <a href="#BibTeX" class="button is-dark is-medium">
+                  <span class="icon">
+                    <i class="fas fa-quote-left"></i>
+                  </span>
+                  <span>BibTeX</span>
+                </a>
+
+                <a class="button is-dark is-medium" href="https://github.com/existentialRobotics/oren" target="_blank"
+                  rel="noopener noreferrer" aria-label="Open repository">
                   <span class="icon"><i class="fab fa-github"></i></span>
                   <span>Repo</span>
                 </a>
@@ -110,7 +116,7 @@
       <div class="columns is-centered has-text-centered">
         <div class="column is-four-fifths">
           <div class="content has-text-centered">
-            <img src="static/results/grad-sdf.gif" alt="Method Demo"
+            <img src="static/results/oren.gif" alt="Method Demo"
               style="max-width: 100%; height: auto; border-radius: 8px;">
           </div>
         </div>
@@ -127,25 +133,17 @@
           <div class="content has-text-justified">
             <p>
               Estimation of signed distance functions (SDFs) from point cloud data has been shown to benefit many robot
-              autonomy capabilities,
-              including localization, mapping, motion planning, and control. Methods that support online and large-scale
-              SDF reconstruction
-              tend to rely on discrete volumetric data structures, which affect the continuity and differentiability of
-              the SDF estimates.
-              Recently, using implicit features, neural network methods have demonstrated high-fidelity and
-              differentiable SDF reconstruction
-              but they tend to be less efficient, can experience catastrophic forgetting and memory limitations in large
-              environments,
-              and are often restricted to truncated SDFs. This work proposes $\nabla$-SDF, a hybrid method that combines
-              an explicit prior
-              obtained from gradient-augmented octree interpolation with an implicit neural residual. Our method
-              achieves non-truncated
-              (Euclidean) SDF reconstruction with computational and memory efficiency comparable to volumetric methods
-              and differentiability
-              and accuracy comparable to neural network methods. Extensive experiments demonstrate that $\nabla$-SDF
-              outperforms the state
-              of the art in terms of accuracy and efficiency, providing a scalable solution for downstream tasks in
-              robotics and computer vision.
+              autonomy capabilities, including localization, mapping, motion planning, and control. Methods that support
+              online and large-scale SDF reconstruction tend to rely on discrete volumetric data structures, which
+              affect the continuity and differentiability of the SDF estimates. Recently, using implicit features,
+              neural network methods have demonstrated high-fidelity and differentiable SDF reconstruction but they tend
+              to be less efficient, can experience catastrophic forgetting and memory limitations in large environments,
+              and are often restricted to truncated SDFs. This work proposes OREN, a hybrid method that combines an
+              explicit prior obtained from gradient-augmented octree interpolation with an implicit neural residual. Our
+              method achieves non-truncated (Euclidean) SDF reconstruction with computational and memory efficiency
+              comparable to volumetric methods and differentiability and accuracy comparable to neural network methods.
+              Extensive experiments demonstrate that OREN outperforms the state of the art in terms of accuracy and
+              efficiency, providing a scalable solution for downstream tasks in robotics and computer vision.
             </p>
           </div>
         </div>
@@ -157,22 +155,19 @@
         <div class="content has-text-justified">
           <div class="content has-text-justified">
             <p>
-              Method Overview: a) We keep key frames with small overlap and those that maximize the surface coverage for
-              training;
-              b) with the selected key frames and the current frame, we generate three types of samples:
-              <span style="color: red;">surface</span> points, <span style="color: orange;">perturbed</span> points
-              around the surface, and <span style="color: cyan;">free-space</span> points;
-              c) to predict SDF, we first obtain an SDF prior \(d_{ga}(\mathbf{x})\) with gradient-augmented
-              interpolation in a semi-sparse octree,
-              where each octant vertex has estimated SDF value and gradient;
-              d) a multi-resolution hash grid with an MLP decoder is used to obtain an SDF residual correction
-              \(\delta_d(\mathbf{x})\);
-              e) the SDF prior \(d_{ga}(\mathbf{x})\) and the SDF residual \(\delta_d(\mathbf{x})\) are combined as the
-              final SDF prediction
-              \(\hat{d}(\mathbf{x}) = d_{ga}(\mathbf{x}) + \delta_d(\mathbf{x})\), and the parameters are trained with
-              three loss functions:
-              <span style="color: red;">reconstruction</span> loss, <span style="color: violet;">Eikonal</span> loss and
-              <span style="color: green;">projection</span> loss.
+              Method overview: a) We keep key frames with small overlap that maximize surface coverage for training;
+              b) With the selected key frames and the current frame, we generate three types of samples: <span
+                style="color: red;">surface</span> points, <span style="color: orange;">perturbed</span> points around
+              the surface, and <span style="color: cyan;">free-space</span> points;
+              c) To predict SDF, we first obtain an SDF prior \(d_{ga}(\mathbf{x})\) with gradient-augmented
+              interpolation in a semi-sparse octree, where each octant vertex has estimated SDF value and gradient;
+              d) We also obtain an implicit neural feature for x by tri-linear interpolation of implicit features stored
+              at the octant vertices, which is fed together with the prior \(d_{ga}(\mathbf{x})\) into an MLP decoder to
+              obtain an SDF residual correction \(\delta_d(\mathbf{x})\);
+              e) The SDF prior \(d_{ga}(\mathbf{x})\) and the SDF residual \(\delta_d(\mathbf{x})\) are combined as the
+              final SDF prediction \(\hat{d}(\mathbf{x}) = d_{ga}(\mathbf{x}) + \delta_d(\mathbf{x})\), and the
+              parameters are trained with three loss functions: <span style="color: red;">reconstruction</span> loss,
+              <span style="color: violet;">Eikonal</span> loss and <span style="color: green;">projection</span> loss.
             </p>
           </div>
           <div class="b-dics" style="float: center">
@@ -245,7 +240,7 @@
         <li role="presentation"><a href="javascript: void(0);" onclick="ChangeEpoch(1);">1500</a></li>
         <li role="presentation"><a href="javascript: void(0);" onclick="ChangeEpoch(2);">3000</a></li>
       </ul>
-      
+
         <div>
           <video class="video" id="video_scene" loop playsinline autoPlay muted
           src="./static/results/lego/video/500.mp4" onplay="resizeAndPlay(this)"></video>
@@ -256,7 +251,7 @@
         <div class="grid-container-2">
           <div class="model-block">
             <p class="myprompt nerf_text"> Neuralangelo</p>
-            <model-viewer 
+            <model-viewer
               src="./static/results/lego/mesh/neuralangelo.glb"
               id="mesh-neuralangelo"
               alt="3D model reconstructed with Neuralangelo"
@@ -270,7 +265,7 @@
 
           <div class="model-block">
             <p class="myprompt nerf_text"> Ours</p>
-            <model-viewer 
+            <model-viewer
               src="./static/results/lego/mesh/ours.glb"
               id="mesh-ours"
               alt="3D model reconstructed with our method"
@@ -288,6 +283,20 @@
     </div>
   </section>
 
+  <section class="section" id="BibTeX">
+    <div class="container is-max-desktop content">
+      <h2 class="title">BibTeX</h2>
+      <pre><code>@misc{dai2026oren,
+      title={OREN: Octree Residual Network for Real-Time Euclidean Signed Distance Mapping},
+      author={Zhirui Dai and Qihao Qian and Tianxing Fan and Nikolay Atanasov},
+      year={2026},
+      eprint={2510.18999},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2510.18999},
+}</code></pre>
+    </div>
+  </section>
 
 
 </body>

@@ -51,7 +51,6 @@ experiment_name: grad_sdf
 scene_bound_min: [-10.0, -10.0, -10.0]
 scene_bound_max: [10.0, 10.0, 10.0]
 gt_mesh_path:
-gt_mesh_offset:
 
 mesh_remove_ceiling: true
 mesh_ceiling_thickness: 0.6

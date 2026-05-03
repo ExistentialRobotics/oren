@@ -149,10 +149,18 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
             n_points = points.shape[0]
             voxel_indices = torch.zeros((n_points,), dtype=torch.long, device=points.device)
             sdf_preds = torch.zeros((n_points,), dtype=torch.float32, device=points.device)
-            residual_features = torch.zeros((n_points, self.cfg.residual_feature_dim*self.cfg.residual_num_levels), dtype=torch.float32, device=points.device)
+            residual_features = torch.zeros(
+                (n_points, self.cfg.residual_feature_dim * self.cfg.residual_num_levels),
+                dtype=torch.float32,
+                device=points.device,
+            )
             for start in range(0, n_points, batch_size):
                 end = min(start + batch_size, n_points)
-                voxel_indices[start:end], sdf_preds[start:end], residual_features[start:end] = self.forward(points[start:end], voxel_indices[start:end])
+                (
+                    voxel_indices[start:end],
+                    sdf_preds[start:end],
+                    residual_features[start:end],
+                ) = self.forward(points[start:end], voxel_indices[start:end])
             return voxel_indices, sdf_preds, residual_features
 
         # Implement the forward pass logic here
@@ -179,34 +187,34 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
             little_endian=self.little_endian_vertex_order,
         )
 
-
+        # If residual features are used, perform trilinear interpolation for each level of residual features
         if self.cfg.residual_feature_dim > 0:
-            per_point_vertex_residual_features_level_1 = self.residual_features[
-                vertex_indices
-            ]  # (n_points, 8, residual_feature_dim)
+            # (n_points, 8, residual_feature_dim)
+            per_point_vertex_residual_features_level_1 = self.residual_features[vertex_indices]
             residual_features = trilinear_interpolation(
                 points=p,
                 per_point_vertex_values=per_point_vertex_residual_features_level_1,
                 little_endian=self.little_endian_vertex_order,
             )
             if self.cfg.residual_num_levels > 1:
+                residual_features = [residual_features]
                 for level in range(2, self.cfg.residual_num_levels + 1):
+                    # level=1: leaf level
                     residual_voxel_indices = self.find_voxel_indices(points, False, level)
                     residual_voxel_centers = self.voxel_centers[residual_voxel_indices]  # (n_points, 3)
                     residual_vertex_indices = self.vertex_indices[residual_voxel_indices]  # (n_points, 8)
                     residual_voxel_sizes = self.voxels[residual_voxel_indices, -1:]  # (n_points, 1)
-                    p = (points - residual_voxel_centers) / (
-                        residual_voxel_sizes * self.cfg.resolution
-                    ) + 0.5  # (n_points, 3)
-                    per_point_vertex_residual_features_level_n = self.residual_features[
-                        residual_vertex_indices
-                    ]  # (n_points, 8, residual_feature_dim)
+                    # (n_points, 3), normalized to [0, 1]
+                    p = (points - residual_voxel_centers) / (residual_voxel_sizes * self.cfg.resolution) + 0.5
+                    # (n_points, 8, residual_feature_dim)
+                    per_point_vertex_residual_features_level_n = self.residual_features[residual_vertex_indices]
                     residual_features_level_n = trilinear_interpolation(
                         points=p,
                         per_point_vertex_values=per_point_vertex_residual_features_level_n,
                         little_endian=self.little_endian_vertex_order,
                     )
-                    residual_features = torch.cat([residual_features, residual_features_level_n], dim=-1)
+                    residual_features.append(residual_features_level_n)
+                residual_features = torch.cat(residual_features, dim=-1)
         else:
             residual_features = None
 

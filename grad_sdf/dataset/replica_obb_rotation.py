@@ -100,11 +100,8 @@ for mesh_path in mesh_path_list:
     print("transformed AABB max value:", aabb_transformed.max_bound)
     print("transformed AABB range:", aabb_transformed.max_bound - aabb_transformed.min_bound)
     print("original OBB range:", obb.extent)
-    # calculate the offset to make all coordinates positive
-    offset = np.abs(aabb_transformed.min_bound.min()) + 0.15  # add a small margin
-    print("offset:", offset)
-    bound_min = aabb_transformed.min_bound + offset - 0.15
-    bound_max = aabb_transformed.max_bound + offset + 0.15
+    bound_min = aabb_transformed.min_bound - 0.15
+    bound_max = aabb_transformed.max_bound + 0.15
     bound = [[round(float(mn), 2), round(float(mx), 2)] for mn, mx in zip(bound_min, bound_max)]
     print("bound:", bound)
 

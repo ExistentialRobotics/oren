@@ -2,8 +2,8 @@ import os
 from typing import Callable, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
-from ruamel import yaml
 import trimesh
+from ruamel import yaml
 from scipy.spatial import cKDTree
 
 from grad_sdf import MarchingCubes, np, o3d, torch
@@ -235,7 +235,6 @@ class EvaluatorBase:
     def mesh_metrics(
         pred_mesh_path: str,
         gt_mesh_path: str,
-        gt_mesh_offset: List[float] | None = None,
         bbox_def_file: str | None = None,
         threshold: float = 0.05,
         num_samples: int = 200_000,
@@ -247,7 +246,6 @@ class EvaluatorBase:
         Args:
             pred_mesh_path: Path to predicted mesh file.
             gt_mesh_path: Path to ground-truth mesh file.
-            gt_mesh_offset: Optional [x, y, z] to translate GT mesh vertices.
             bbox_def_file: Optional path to a file defining the bounding box for evaluation, in case the meshes are not well-aligned.
             threshold: Distance threshold for precision/recall/completion_ratio.
             num_samples: Number of points to sample on the predicted mesh for evaluation.
@@ -259,8 +257,6 @@ class EvaluatorBase:
         """
         pred_mesh = trimesh.load_mesh(pred_mesh_path)
         gt_mesh = trimesh.load_mesh(gt_mesh_path)
-        if gt_mesh_offset is not None:
-            gt_mesh.apply_translation(gt_mesh_offset)
 
         bbox, bbox_def = _load_bbox(bbox_def_file)
         pred_mesh = _crop_to_bbox(pred_mesh, bbox)
@@ -306,7 +302,6 @@ class EvaluatorBase:
     def mesh_metrics_pointcloud_gt(
         pred_mesh_path: str,
         gt_pointcloud_path: str,
-        gt_pointcloud_offset: List[float] | None = None,
         bbox_def_file: str | None = None,
         threshold: float = 0.05,
         num_samples: int = 200_000,
@@ -321,7 +316,6 @@ class EvaluatorBase:
         Args:
             pred_mesh_path: Path to predicted mesh file.
             gt_pointcloud_path: Path to ground-truth point cloud (.npy, .ply, or .pcd).
-            gt_pointcloud_offset: Optional [x, y, z] to translate GT points.
             bbox_def_file: Path to bounding box definition file (optional).
             threshold: Distance threshold for precision/recall/completion_ratio.
             num_samples: Number of points to sample on the predicted mesh.
@@ -333,8 +327,6 @@ class EvaluatorBase:
         """
         pred_mesh = trimesh.load_mesh(pred_mesh_path)
         gt_pts_all = _load_pointcloud(gt_pointcloud_path)
-        if gt_pointcloud_offset is not None:
-            gt_pts_all = gt_pts_all + np.array(gt_pointcloud_offset, dtype=gt_pts_all.dtype)
 
         bbox, bbox_def = _load_bbox(bbox_def_file)
         pred_mesh = _crop_to_bbox(pred_mesh, bbox)
@@ -407,7 +399,6 @@ class EvaluatorBase:
         eps: float,
         pred_mesh_path: str,
         gt_mesh_path: str,
-        gt_mesh_offset: List[float] | None = None,
         threshold: float = 0.05,
         num_samples: int = 200_000,
         seed: int = 0,
@@ -416,10 +407,9 @@ class EvaluatorBase:
         metrics["mesh_metrics"] = self.mesh_metrics(
             pred_mesh_path,
             gt_mesh_path,
-            gt_mesh_offset,
-            threshold,
-            num_samples,
-            seed,
+            threshold=threshold,
+            num_samples=num_samples,
+            seed=seed,
         )
         return metrics
 

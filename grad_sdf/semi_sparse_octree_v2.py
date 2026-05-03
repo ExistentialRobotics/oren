@@ -1,6 +1,4 @@
-from erl_geometry import SemiSparseOctreeF
-from erl_geometry import find_voxel_indices
-from erl_geometry import morton_encode
+from erl_geometry import SemiSparseOctreeF, find_voxel_indices, morton_encode
 
 from grad_sdf import torch
 from grad_sdf.octree_config import OctreeConfig
@@ -58,7 +56,7 @@ class SemiSparseOctree(SemiSparseOctreeBase):
         voxel_indices = find_voxel_indices(
             codes=morton_codes,
             dims=3,
-            level=self.cfg.tree_depth - level,
+            n_levels=self.cfg.tree_depth - level,
             children=self.structure,
         ).long()
         mask = ((voxels < 0) | (voxels >= (1 << self.cfg.tree_depth))).any(dim=-1)

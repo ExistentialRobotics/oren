@@ -238,7 +238,12 @@ def main():
     parser.add_argument("--output-dir", type=str, required=True, help="Path to the output dataset directory")
     parser.add_argument("--interval", type=int, default=50, help="insert an upward-looking frame every n frames")
     parser.add_argument("--n-rolls-per-insertion", type=int, default=10, help="number of rolls per insertion")
-    parser.add_argument("--max-roll-of-insertion", type=float, default=np.pi / 3, help="maximum roll angle for inserted frames")
+    parser.add_argument(
+        "--max-roll-of-insertion",
+        type=float,
+        default=np.pi / 3,
+        help="maximum roll angle for inserted frames",
+    )
     parser.add_argument("--keep-existing", action="store_true", help="whether to ignore existing frames")
     parser.add_argument(
         "--scenes",

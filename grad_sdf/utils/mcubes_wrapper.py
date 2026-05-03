@@ -14,11 +14,9 @@ class MarchingCubesWrapper:
     def run(coords_min, grid_res, grid_shape, grid_values, mask, iso_value, *args, **kwargs):
         if mask is not None:
             tqdm.write(
-                Fore.RED
-                + "Using fallback MarchingCubes implementation from skimage. The mesh quality is lower than"
+                Fore.RED + "Using fallback MarchingCubes implementation from skimage. The mesh quality is lower than"
                 " erl_geometry.MarchingCubes. Please install erl_geometry for better performance and more accurate"
-                " results."
-                + Style.RESET_ALL
+                " results." + Style.RESET_ALL
             )
 
         assert len(grid_res) == 3

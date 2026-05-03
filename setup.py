@@ -1,6 +1,7 @@
-from setuptools import setup, find_packages
 import os
 from glob import glob
+
+from setuptools import find_packages, setup
 
 # colcon_detected = "COLCON_CURRENT_PREFIX" in os.environ
 

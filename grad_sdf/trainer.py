@@ -4,18 +4,19 @@ from typing import Callable, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm import tqdm
+
 from grad_sdf import torch
 from grad_sdf.criterion import Criterion
 from grad_sdf.evaluator_grad_sdf import GradSdfEvaluator
 from grad_sdf.frame import Frame
 from grad_sdf.key_frame_set import KeyFrameSet
-from grad_sdf.utils.import_util import get_dataset
 from grad_sdf.loggers import BasicLogger
 from grad_sdf.model import SdfNetwork
 from grad_sdf.trainer_config import TrainerConfig
+from grad_sdf.utils.import_util import get_dataset
 from grad_sdf.utils.profiling import GpuTimer
 from grad_sdf.utils.sampling import SampleResults, generate_sdf_samples
-from tqdm import tqdm
 
 
 class Trainer:
@@ -27,8 +28,8 @@ class Trainer:
         self.data_stream = get_dataset(cfg.data.dataset_name, cfg.data.dataset_args)
 
         # set the bound automatically
-        self.cfg.model.residual_net_cfg.bound_min = (self.data_stream.bound_min - 0.1).cpu().tolist()
-        self.cfg.model.residual_net_cfg.bound_max = (self.data_stream.bound_max + 0.1).cpu().tolist()
+        self.cfg.bound_min = (self.data_stream.bound_min - 0.1).cpu().tolist()
+        self.cfg.bound_max = (self.data_stream.bound_max + 0.1).cpu().tolist()
 
         if self.cfg.data.end_frame < 0:
             self.cfg.data.end_frame = len(self.data_stream)
@@ -46,8 +47,6 @@ class Trainer:
 
         self.logger = BasicLogger(cfg.log_dir, cfg.exp_name, cfg.as_dict())
 
-        # Handle offset whether in dataset_args or directly in data
-        self.scene_offset = torch.tensor(self.cfg.data.offset)
         self.epoch = 0
         self.global_step = 0
         self.num_iterations = 0
@@ -89,7 +88,6 @@ class Trainer:
             clean_mesh=self.cfg.clean_mesh,
             model_cfg=self.cfg.model,
             model=self.model,
-            model_input_offset=None,
             device=self.cfg.device,
         )
 
@@ -222,9 +220,10 @@ class Trainer:
             self.samples.sampled_xyz.requires_grad_(True)
         else:
             with self.timer_compute_offset_points:
-                offset_points_plus, offset_points_minus = self.compute_offset_points_for_finite_diff(
-                    self.samples.sampled_xyz
-                )
+                (
+                    offset_points_plus,
+                    offset_points_minus,
+                ) = self.compute_offset_points_for_finite_diff(self.samples.sampled_xyz)
             with self.timer_find_voxel_indices_offset_points:
                 voxel_indices_plus = self.find_voxel_indices(offset_points_plus)  # (n, m, 3)
                 voxel_indices_minus = self.find_voxel_indices(offset_points_minus)  # (n, m, 3)
@@ -284,7 +283,7 @@ class Trainer:
                         gt_sdf_perturb=self.samples.perturbation_sdf,
                         gt_sdf_stratified=self.samples.stratified_sdf,
                         positive_perturbation_mask=self.samples.positive_perturbation_mask,
-                        perturb_sigma=self.cfg.sample_rays.sigma_s,
+                        perturb_eta=self.cfg.sample_rays.sigma_s,
                     )
                     loss.backward()
                     self.optimizer.step()
@@ -401,8 +400,8 @@ class Trainer:
         return time_stats
 
     def evaluate(self, epoch_dir: Optional[str] = None):
-        bound_min = self.cfg.model.residual_net_cfg.bound_min
-        bound_max = self.cfg.model.residual_net_cfg.bound_max
+        bound_min = self.cfg.bound_min
+        bound_max = self.cfg.bound_max
 
         if self.cfg.save_mesh:
             mesh_prior, mesh = self.evaluator.extract_mesh(

@@ -4,32 +4,35 @@ grad-SDF Mapping Node for ROS 2
 This node subscribes to point cloud and pose topics and performs online SDF mapping
 """
 
-import sys
 import os
-import numpy as np
-import pandas as pd
-import torch
+import sys
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import rclpy
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from sensor_msgs.msg import PointCloud2
-from geometry_msgs.msg import PoseStamped, TransformStamped
-from std_msgs.msg import Header
 import sensor_msgs_py.point_cloud2 as pc2
-from rclpy.qos import qos_profile_sensor_data
+import torch
+from geometry_msgs.msg import PoseStamped, TransformStamped
+from rclpy.node import Node
+from rclpy.qos import (
+    DurabilityPolicy,
+    HistoryPolicy,
+    QoSProfile,
+    ReliabilityPolicy,
+    qos_profile_sensor_data,
+)
 from scipy.spatial.transform import Rotation as R
-
-
+from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import Header
 
 # Add grad-sdf to path
 grad_sdf_path = str(Path(__file__).resolve().parents[4])
 sys.path.insert(0, grad_sdf_path)
 
-from grad_sdf.trainer_config import TrainerConfig
-from grad_sdf.trainer import Trainer
 from grad_sdf.frame import LiDARFrame
+from grad_sdf.trainer import Trainer
+from grad_sdf.trainer_config import TrainerConfig
 
 
 class GradSDFMappingNode(Node):
@@ -38,9 +41,9 @@ class GradSDFMappingNode(Node):
     """
 
     def __init__(self):
-        super().__init__('grad_sdf_mapping_node')
+        super().__init__("grad_sdf_mapping_node")
 
-        self.pointcloud_topic = '/os_cloud_node/points'
+        self.pointcloud_topic = "/os_cloud_node/points"
 
         # State for auto-evaluate when bag playback ends
         self.last_pc_time = None  # Last received point cloud time (rclpy.time.Time)
@@ -55,41 +58,31 @@ class GradSDFMappingNode(Node):
         self.device = self.cfg.device
 
         # Initialize trainer
-        self.get_logger().info('Initializing grad-SDF model...')
+        self.get_logger().info("Initializing grad-SDF model...")
         self.trainer = Trainer(self.cfg)
 
         # Load poses
-        pose_path = self.cfg.data.dataset_args['pose_file_path']
+        pose_path = self.cfg.data.dataset_args["pose_file_path"]
         self.load_pose(pose_path)
-        self.get_logger().info(f'Loaded {len(self.pose_data)} poses from GT file.')
+        self.get_logger().info(f"Loaded {len(self.pose_data)} poses from GT file.")
 
         # Subscribe to point cloud
-        qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
-            depth=10
-        )
+        qos_profile = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.VOLATILE, depth=10)
 
         self.pc_sub = self.create_subscription(
-            PointCloud2,
-            self.pointcloud_topic,
-            self.pointcloud_callback,
-            qos_profile
+            PointCloud2, self.pointcloud_topic, self.pointcloud_callback, qos_profile
         )
-        self.get_logger().info(f'Subscribed to {self.pointcloud_topic}')
+        self.get_logger().info(f"Subscribed to {self.pointcloud_topic}")
 
         # State tracking
         self.frame_count = 0
-        offset = self.cfg.data.dataset_args['offset']
-        self.scene_offset = torch.tensor(offset, device=self.device)
-        self.get_logger().info(f'Scene offset: {self.scene_offset}')
-        self.get_logger().info('Node initialization complete, waiting for point cloud messages...')
+        self.get_logger().info("Node initialization complete, waiting for point cloud messages...")
 
         # Timer: periodically check for missing point cloud and auto-evaluate
         self.no_data_timer = self.create_timer(1.0, self.check_no_data_timeout)
 
     def load_pose(self, pose_file_path: str):
-        df = pd.read_csv(pose_file_path, comment='#', header=None)
+        df = pd.read_csv(pose_file_path, comment="#", header=None)
         timestamp = df.iloc[:, 0] + df.iloc[:, 1] / 1e9
         arr = np.column_stack([timestamp.values, df.iloc[:, 2:].values])
         self.pose_data = arr
@@ -105,7 +98,7 @@ class GradSDFMappingNode(Node):
             best_idx = len(times) - 1
         else:
             # Choose the closer one
-            if abs(times[idx] - query_time) < abs(times[idx-1] - query_time):
+            if abs(times[idx] - query_time) < abs(times[idx - 1] - query_time):
                 best_idx = idx
             else:
                 best_idx = idx - 1
@@ -119,41 +112,40 @@ class GradSDFMappingNode(Node):
 
         # Convert to 4x4 matrix
         T = np.eye(4)
-        T[:3, 3] = p[0:3] # x, y, z
-        rot = R.from_quat(p[3:7]).as_matrix() # qx, qy, qz, qw
+        T[:3, 3] = p[0:3]  # x, y, z
+        rot = R.from_quat(p[3:7]).as_matrix()  # qx, qy, qz, qw
         T[:3, :3] = rot
 
         return torch.tensor(T, dtype=torch.float32, device=self.device)
 
     def pointcloud_callback(self, msg):
-        self.get_logger().info(f'=== CALLBACK TRIGGERED === Message received, data size: {len(msg.data)} bytes')
+        self.get_logger().info(f"=== CALLBACK TRIGGERED === Message received, data size: {len(msg.data)} bytes")
         try:
             # Update last received point cloud time
             self.last_pc_time = self.get_clock().now()
 
             pc_time = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
-            self.get_logger().info(f'Point cloud timestamp: {pc_time:.6f} (sec={msg.header.stamp.sec}, nanosec={msg.header.stamp.nanosec})')
+            self.get_logger().info(
+                f"Point cloud timestamp: {pc_time:.6f} (sec={msg.header.stamp.sec}, nanosec={msg.header.stamp.nanosec})"
+            )
 
             # Match pose
             pose_mat = self.find_nearest_pose(pc_time)
             if pose_mat is None:
-                self.get_logger().warn(f'No matching pose found for point cloud at time {pc_time:.6f}')
+                self.get_logger().warn(f"No matching pose found for point cloud at time {pc_time:.6f}")
                 return
 
-            self.get_logger().info(f'Matched pose successfully')
+            self.get_logger().info(f"Matched pose successfully")
 
-            points_np = np.frombuffer(
-                msg.data,
-                dtype=np.float32
-            ).reshape(-1, msg.point_step // 4)[:, :3]
+            points_np = np.frombuffer(msg.data, dtype=np.float32).reshape(-1, msg.point_step // 4)[:, :3]
             points = torch.tensor(points_np, dtype=torch.float32, device=self.cfg.device)
 
             self.process_frame(points, pose_mat)
         except Exception as e:
-            self.get_logger().error(f'Error in pointcloud_callback: {e}')
+            self.get_logger().error(f"Error in pointcloud_callback: {e}")
             import traceback
-            self.get_logger().error(traceback.format_exc())
 
+            self.get_logger().error(traceback.format_exc())
 
     def process_frame(self, points, pose):
         """
@@ -164,16 +156,15 @@ class GradSDFMappingNode(Node):
             pose: torch.Tensor of shape (4, 4) - pose transformation matrix
         """
         self.frame_count += 1
-        self.get_logger().info(f'Processing frame {self.frame_count}...')
+        self.get_logger().info(f"Processing frame {self.frame_count}...")
 
         # Create LiDARFrame with points in sensor frame and pose
         frame = LiDARFrame(
             fid=self.frame_count,
             pointcloud=points,
-            offset=self.scene_offset,
             ref_pose=pose,
         )
-        frame.apply_bound(self.cfg.data.dataset_args['bound_min'], self.cfg.data.dataset_args['bound_max'])
+        frame.apply_bound(self.cfg.data.dataset_args["bound_min"], self.cfg.data.dataset_args["bound_max"])
 
         # Get points in world frame
         points_world = frame.get_points(to_world_frame=True, device=self.cfg.device)
@@ -184,7 +175,7 @@ class GradSDFMappingNode(Node):
         # Update key frame set (using Trainer's method)
         is_key_frame = self.trainer.update_key_frame_set(frame, seen_voxels)
         if is_key_frame:
-            self.get_logger().info(f'Frame {self.frame_count} is selected as a key frame.')
+            self.get_logger().info(f"Frame {self.frame_count} is selected as a key frame.")
 
         self.trainer.train_with_frame(frame)
         self.trainer.epoch += 1
@@ -204,14 +195,14 @@ class GradSDFMappingNode(Node):
 
         if elapsed > self.no_data_timeout_sec:
             self.get_logger().info(
-                f'No point cloud received for {elapsed:.2f} seconds '
-                f'(> {self.no_data_timeout_sec}s). Assuming bag playback finished, '
-                'running evaluate() and shutting down.'
+                f"No point cloud received for {elapsed:.2f} seconds "
+                f"(> {self.no_data_timeout_sec}s). Assuming bag playback finished, "
+                "running evaluate() and shutting down."
             )
             try:
                 self.trainer.evaluate()
             except Exception as e:
-                self.get_logger().error(f'Error during automatic evaluate: {e}')
+                self.get_logger().error(f"Error during automatic evaluate: {e}")
             finally:
                 self.evaluation_done = True
                 # Trigger ROS shutdown to end spin (avoid duplicate shutdown)
@@ -227,7 +218,7 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info('Shutting down...')
+        node.get_logger().info("Shutting down...")
         # evaluate on shutdown
         node.trainer.evaluate()
     finally:
@@ -236,5 +227,5 @@ def main(args=None):
             rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

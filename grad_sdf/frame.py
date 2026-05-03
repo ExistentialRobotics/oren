@@ -1,5 +1,6 @@
-import torch
 from typing import Optional
+
+import torch
 
 
 class Frame:
@@ -40,7 +41,6 @@ class DepthFrame(Frame):
         fid: int,
         depth: torch.Tensor,
         intrinsic: torch.Tensor,
-        offset: torch.Tensor,
         ref_pose: torch.Tensor,
         max_depth: Optional[float] = None,
         min_depth: Optional[float] = None,
@@ -51,7 +51,6 @@ class DepthFrame(Frame):
             fid: int, frame idx
             depth: (H, W) in meter
             intrinsic: (3, 3) intrinsic matrix
-            offset: (3, ) offset to be added to the translation of ref_pose
             ref_pose: (4, 4) reference pose in world coordinates
             max_depth: float, max depth in meter
             min_depth: float, min depth in meter
@@ -70,7 +69,6 @@ class DepthFrame(Frame):
             self.ref_pose = torch.tensor(ref_pose, requires_grad=False, dtype=torch.float32)
         else:  # from tracked data
             self.ref_pose = ref_pose.clone().requires_grad_(False)
-        self.ref_pose[:3, 3] += offset  # Offset ensures voxel coordinates > 0
 
         self.rays_d: torch.Tensor = self.get_rays(K=self.K)  # (H, W, 3) in camera coordinates
         self.points: torch.Tensor = self.rays_d * self.depth[..., None]  # (H, W, 3) in camera coordinates
@@ -224,12 +222,10 @@ class LiDARFrame:
         self,
         fid: int,
         pointcloud: torch.Tensor,
-        offset: torch.Tensor,
         ref_pose: torch.Tensor,
     ) -> None:
         self.stamp = fid
         self.points = pointcloud
-        self.offset = offset
 
         if ref_pose.ndim != 2:
             ref_pose = ref_pose.reshape(4, 4)
@@ -237,7 +233,6 @@ class LiDARFrame:
             self.ref_pose = torch.tensor(ref_pose, requires_grad=False, dtype=torch.float32)
         else:  # from tracked data
             self.ref_pose = ref_pose.clone().requires_grad_(False)
-        self.ref_pose[:3, 3] += offset  # Offset ensures voxel coordinates > 0
         self.rays_d: torch.Tensor = self.get_rays()  # (N, 3) in world coordinates
 
         self.valid_mask: torch.Tensor = torch.ones(pointcloud.shape[0], dtype=torch.bool)

@@ -64,8 +64,9 @@ import cv2
 import numpy as np
 import open3d as o3d
 import yaml
-from grad_sdf.utils.config_abc import ConfigABC
 from scipy.spatial import cKDTree
+
+from grad_sdf.utils.config_abc import ConfigABC
 
 
 @dataclass
@@ -922,13 +923,7 @@ def main():
     parser = ViewerConfig.get_argparser()
     cfg: ViewerConfig = parser.parse_args()
 
-    # Set default mesh files if not provided via config
-    if not cfg.mesh_files:
-        cfg.mesh_files = [
-            "/home/daizhirui/results/erl_gp_sdf/replica-axial_0.0025/room1/20260126-120027/built_mesh.ply",
-            "/home/daizhirui/results/fiesta/replica-axial_0.0025/room1/mesh.ply",
-        ]
-        cfg.mesh_labels = ["Ours", "FIESTA"]
+    assert cfg.mesh_files is not None and len(cfg.mesh_files) > 0, "At least one mesh file must be specified"
 
     # Camera configuration file handling:
     # Priority:

@@ -1,5 +1,5 @@
 base_config: ../v2/trainer-replica.yaml
-exp_name: IROS/replica/room2
+exp_name: replica/room2
 data:
     dataset_args:
-        data_path: "data/replica-3040/room2"
+        data_path: "data/replica/room2"

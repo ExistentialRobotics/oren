@@ -12,14 +12,14 @@ BindFindVoxelIndicesTorch(py::module &m) {
         "find_voxel_indices",
         [](const torch::Tensor &codes,
            const int dims,
-           const int level,
+           const int n_levels,
            const torch::Tensor &children,
            const bool parallel) {
             torch::Tensor voxel_indices;
             erl::geometry::FindVoxelIndicesTorch(
                 codes,
                 dims,
-                level,
+                n_levels,
                 children,
                 parallel,
                 voxel_indices);
@@ -27,7 +27,7 @@ BindFindVoxelIndicesTorch(py::module &m) {
         },
         py::arg("codes").noconvert(),
         py::arg("dims"),
-        py::arg("level"),
+        py::arg("n_levels"),
         py::arg("children").noconvert(),
         py::arg("parallel") = true,
         py::call_guard<py::gil_scoped_release>(),
@@ -37,7 +37,7 @@ Find voxel indices from morton codes and tree structure.
 Args:
     codes (torch.Tensor): Tensor of morton code with dtype torch.uint32 or torch.uint64.
     dims (int): Space dimension, 2 or 3.
-    level (int): The level to start the search, usually tree_depth - 1.
+    n_levels (int): The number of levels to search from the root.
     children (torch.Tensor): Tensor of shape (M, 2^dims) that stores the tree structure.
     parallel (bool, optional): If true, use parallel for to speed up the search when using CPU. Default is True.
 

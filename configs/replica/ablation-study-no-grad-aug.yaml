@@ -1,5 +1,0 @@
-base_config: ablation-study-base.yaml
-exp_name: no-grad-aug
-model:
-    octree_cfg:
-        gradient_augmentation: false

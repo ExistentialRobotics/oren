@@ -1,6 +1,7 @@
-import vedo
-import numpy as np
 from typing import List, Optional, Union
+
+import numpy as np
+import vedo
 
 
 class TrajBubbleVisualizer:

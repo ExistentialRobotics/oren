@@ -2,9 +2,12 @@
 Python 3 Interface of erl_geometry
 """
 from __future__ import annotations
+
+import typing
+
 import numpy
 import torch
-import typing
+
 __all__: list[str] = ['Aabb2Dd', 'Aabb2Df', 'Aabb3Dd', 'Aabb3Df', 'AbstractOccupancyOctreeD', 'AbstractOccupancyOctreeF', 'AbstractOccupancyQuadtreeD', 'AbstractOccupancyQuadtreeF', 'AbstractOctreeD', 'AbstractOctreeF', 'AbstractOctreeNode', 'AbstractQuadtreeD', 'AbstractQuadtreeF', 'AbstractQuadtreeNode', 'AxisAlignedRectangle2D', 'Box', 'CameraBase3Dd', 'CameraBase3Df', 'CameraIntrinsicD', 'CameraIntrinsicF', 'CityStreetMap', 'DepthCamera3Dd', 'DepthCamera3Df', 'DepthFrame3Dd', 'DepthFrame3Df', 'Ellipse2D', 'Ellipsoid', 'HouseExpoMap', 'Lidar2D', 'Lidar3Dd', 'Lidar3Df', 'LidarFrame2Dd', 'LidarFrame2Df', 'LidarFrame3Dd', 'LidarFrame3Df', 'Line2D', 'LogOddMap', 'LogOddMap2Dd', 'LogOddMap2Df', 'MarchingCubes', 'MeshSdf', 'NdTreeSetting', 'OccupancyNdTreeSetting', 'OccupancyOctreeBaseSetting', 'OccupancyOctreeD', 'OccupancyOctreeDrawerSetting', 'OccupancyOctreeF', 'OccupancyOctreeNode', 'OccupancyQuadtreeBaseSetting', 'OccupancyQuadtreeD', 'OccupancyQuadtreeDrawerSettingD', 'OccupancyQuadtreeDrawerSettingF', 'OccupancyQuadtreeF', 'OccupancyQuadtreeNode', 'OctreeKey', 'Primitive2D', 'Primitive3D', 'PyObjectOccupancyOctreeD', 'PyObjectOccupancyOctreeF', 'PyObjectOccupancyOctreeNode', 'PyObjectOccupancyQuadtreeD', 'PyObjectOccupancyQuadtreeF', 'PyObjectOccupancyQuadtreeNode', 'QuadtreeKey', 'RangeSensor3Dd', 'RangeSensor3Df', 'RangeSensorFrame3Dd', 'RangeSensorFrame3Df', 'Ray2D', 'Rectangle2D', 'RgbdCamera3Dd', 'RgbdCamera3Df', 'RgbdFrame3Dd', 'RgbdFrame3Df', 'Segment2D', 'SemiSparseNdTreeSetting', 'SemiSparseOctreeD', 'SemiSparseOctreeF', 'SemiSparseOctreeNode', 'SemiSparseQuadtreeD', 'SemiSparseQuadtreeF', 'SemiSparseQuadtreeNode', 'Space2D', 'Surface2D', 'TrajectoryD', 'TrajectoryF', 'YamlableBase', 'bresenham_2d', 'compute_intersection_between_line_and_ellipse_2d', 'compute_intersection_between_line_and_ellipsoid_3d', 'compute_intersection_between_ray_and_aabb_2d', 'compute_intersection_between_ray_and_aabb_3d', 'compute_intersection_between_ray_and_line_2d', 'compute_nearest_distance_from_point_to_line_segment_2d', 'compute_pixels_of_polygon_contour', 'convert_path_2d_to_3d_float32', 'convert_path_2d_to_3d_float64', 'create_ellipsoid_mesh', 'find_voxel_indices', 'hidden_point_removal', 'marching_square', 'morton_decode', 'morton_encode', 'parallel_hidden_point_removal', 'winding_number']
 class Aabb2Dd:
     class CornerType:

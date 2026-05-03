@@ -1,5 +1,5 @@
 base_config: ../v2/trainer-replica.yaml
-exp_name: IROS/replica/office4
+exp_name: replica/office4
 data:
     dataset_args:
-        data_path: "data/replica-3040/office4"
+        data_path: "data/replica/office4"

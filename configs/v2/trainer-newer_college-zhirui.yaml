@@ -1,5 +1,0 @@
-base_config: trainer-newercollege.yaml
-exp_name: IROS/newer_college
-data:
-    dataset_args:
-        data_path: "/home/daizhirui/Data/NewerCollege-DLIO/rotated"

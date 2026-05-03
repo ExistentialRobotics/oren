@@ -111,7 +111,6 @@ def main():
     )
     parser.add_argument("--bound-min", type=float, nargs=3, default=None)
     parser.add_argument("--bound-max", type=float, nargs=3, default=None)
-    parser.add_argument("--offset", type=float, nargs=3, help="Offset to move the bounds")
     parser.add_argument("--grid-resolution", type=float, default=0.0125, help="Resolution of the grid to generate")
     parser.add_argument("--eps", type=float, default=0.001, help="Small value for numerical gradient computation")
     parser.add_argument(
@@ -140,7 +139,6 @@ def main():
     pcd_path: str | None = args.pcd_path
     bound_min: list[float] | None = args.bound_min
     bound_max: list[float] | None = args.bound_max
-    offset: list[float] | None = args.offset
     grid_resolution: float = args.grid_resolution
     eps: float = args.eps
     near_surface_sdf_range: list[float] = args.near_surface_sdf_range
@@ -167,10 +165,8 @@ def main():
             bound_min = bmin - padding if bound_min is None else np.asarray(bound_min)
             bound_max = bmax + padding if bound_max is None else np.asarray(bound_max)
 
-    if offset is None:
-        offset = np.zeros((3,))
-    bound_min = np.asarray(bound_min) - np.asarray(offset)
-    bound_max = np.asarray(bound_max) - np.asarray(offset)
+    bound_min = np.asarray(bound_min)
+    bound_max = np.asarray(bound_max)
 
     os.makedirs(output_dir, exist_ok=True)
 
