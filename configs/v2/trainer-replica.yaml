@@ -31,6 +31,7 @@ model:
         tree_depth: 8 # 0.1*2^8=25.6m
         semi_sparse_depth: 5
         init_voxel_num: 200000
+        independent_smallest_leaf_vertex: false
         insertion_threshold: 3
         skip_insertion_if_exists: true # speed up a bit
         residual_feature_dim: 3

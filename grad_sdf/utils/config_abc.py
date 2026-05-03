@@ -6,8 +6,18 @@ from dataclasses import MISSING, dataclass, fields, is_dataclass
 from typing import ClassVar, Literal, Union, get_args, get_origin
 
 import numpy as np
-import torch
 from ruamel import yaml
+
+try:
+    import torch
+except ImportError:
+
+    print("Warning: torch is not installed, set torch.Tensor to np.ndarray.")
+
+    # dummy torch module
+    class torch:
+        Tensor = np.ndarray
+
 
 __all__ = [
     "ConfigABC",
@@ -418,7 +428,7 @@ class ConfigABC:
                                 setattr(_config_obj, key, value)
                         else:  # nested attribute
                             prefix = key[:ind]
-                            suffix = key[ind + 1:]
+                            suffix = key[ind + 1 :]
                             assert hasattr(_config_obj, prefix), f"Unknown attribute {prefix}"
                             args_update_config({suffix: value}, getattr(_config_obj, prefix))
 
@@ -436,7 +446,7 @@ class ConfigABC:
                             result[key] = value
                         else:
                             prefix = key[:ind]
-                            suffix = key[ind + 1:]
+                            suffix = key[ind + 1 :]
                             if prefix not in result:
                                 result[prefix] = dict()
                             assert suffix not in result[prefix]

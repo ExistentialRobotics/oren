@@ -21,7 +21,7 @@ sample_update_freq: 1
 sample_point_size: 6
 sample_point_downsample: 1
 sample_color_surf: [0.6, 0.0, 0.0]
-sample_color_perturb: [0.0, 0.6, 0.0]
+sample_color_perturbed: [0.0, 0.6, 0.0]
 sample_color_free: [0.0, 0.0, 0.6]
 
 camera_line_width: 8
