@@ -20,6 +20,10 @@ class DataLoader(Dataset):
         bound_min: torch.Tensor = None,
         bound_max: torch.Tensor = None,
     ):
+        data_path = osp.expanduser(data_path)
+        data_path = osp.abspath(data_path)
+        data_path = data_path.rstrip("/")
+
         self.data_path = data_path
         self.min_depth = min_depth
         self.max_depth = max_depth

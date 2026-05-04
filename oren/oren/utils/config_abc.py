@@ -107,6 +107,14 @@ class ConfigABC:
                     field_type = args[0]
                 else:
                     field_type = args[1]
+                # If the inner type is a generic alias (e.g. list[float]),
+                # unwrap it to its origin (list) and capture its inner args (float,).
+                inner_origin = get_origin(field_type)
+                if inner_origin is not None:
+                    type_args = get_args(field_type)
+                    field_type = inner_origin
+                else:
+                    type_args = ()
         elif field_type is Literal:
             field_type = str
             choices = type_args

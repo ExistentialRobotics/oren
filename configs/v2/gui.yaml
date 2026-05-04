@@ -2,7 +2,11 @@ identifier: oren.gui_base.GuiBaseConfig
 
 scene_width: 1920
 scene_height: 1440
-panel_split_ratio: 0.8
+panel_split_ratio: 0.70
+objects_layout:
+    - [axis, scan, traj, kf_cams, curr_cam, gt_mesh, octree]
+    - [sdf, sdf_prior, sdf_residual, mesh, mesh_prior]
+    - [sample_surf, sample_perturbed, sample_free, sample_extra]
 
 view_option: from_file # options: [follow, keyboard, from_file]
 view_file: replica_room0_view0.yaml

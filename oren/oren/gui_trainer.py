@@ -6,6 +6,7 @@ import threading
 import time
 from typing import Optional
 
+import psutil
 from colorama import Fore, Style
 from tqdm import tqdm
 
@@ -55,6 +56,11 @@ class GuiTrainer:
 
         self.thread_after_training_end = threading.Thread(target=self.after_training_end)
 
+        # psutil.Process().cpu_percent() needs a prior call to establish a baseline; the first
+        # measurement after this prime returns the average over the elapsed interval.
+        self._psutil_proc = psutil.Process()
+        self._psutil_proc.cpu_percent(interval=None)
+
     def training_iteration_end_callback(self, trainer: Trainer):
         # send iteration results to GUI
         data_packet = GuiDataPacket()
@@ -71,6 +77,14 @@ class GuiTrainer:
         data_packet.time_stats["train_frame"] = train_frame_time
         data_packet.loss_stats = trainer.loss_dict
         data_packet.gpu_mem_usage = torch.cuda.memory_allocated() / (1024**3)  # in GB
+        data_packet.cpu_mem_usage = self._psutil_proc.memory_info().rss / (1024**3)  # in GB
+        data_packet.cpu_util = self._psutil_proc.cpu_percent(interval=None)
+        try:
+            data_packet.gpu_util = float(torch.cuda.utilization())
+        except (ModuleNotFoundError, RuntimeError):
+            # nvidia-ml-py not installed or no NVIDIA device; leave GPU utilization blank
+            data_packet.gpu_util = None
+            pass
 
         self.reply_gui(data_packet, must_reply=True)
 
@@ -220,7 +234,7 @@ class GuiTrainer:
                     or self.last_sdf_slice_step != self.trainer.global_step
                 )
             ):
-                results = self.trainer.evaluater.extract_slice(
+                results = self.trainer.evaluator.extract_slice(
                     axis=self.control_packet.sdf_slice_axis,
                     pos=self.control_packet.sdf_slice_position,
                     resolution=self.control_packet.sdf_slice_resolution,
@@ -260,7 +274,7 @@ class GuiTrainer:
                 if free_mem < (1024**3):  # less than 1GB free memory
                     tqdm.write(Fore.RED + "LOW GPU MEMORY: try to empty cache" + Style.RESET_ALL)
                     torch.cuda.empty_cache()
-                results = self.trainer.evaluater.extract_sdf_grid(
+                results = self.trainer.evaluator.extract_sdf_grid(
                     bound_min=self.gui_cfg.scene_bound_min,
                     bound_max=self.gui_cfg.scene_bound_max,
                     grid_resolution=self.control_packet.sdf_grid_resolution,
@@ -268,7 +282,7 @@ class GuiTrainer:
                         (
                             lambda *args: self.trainer.model.grid_vertex_filter(
                                 *args,
-                                batch_size=self.trainer.evaluater.batch_size,
+                                batch_size=self.trainer.evaluator.batch_size,
                                 device="cpu",
                             )
                         )

@@ -39,7 +39,7 @@ class DataLoader(Dataset):
             assert self.bound_min is not None
             self.bound_max = torch.tensor(self.bound_max).float()
 
-        self.num_imgs = len(glob(osp.join(self.data_path, "ply/*.ply")))
+        self.num_pcds = len(glob(osp.join(self.data_path, "ply/*.ply")))
         self.gt_pose = self.load_gt_pose()
 
     def get_init_pose(self, init_frame=None):
@@ -52,7 +52,7 @@ class DataLoader(Dataset):
 
     def load_gt_pose(self):
         gt_file = osp.join(self.data_path, "traj.txt")
-        gt_pose = np.loadtxt(gt_file)  # (n_imgs,16)
+        gt_pose = np.loadtxt(gt_file)  # (n_pcds,16)
         gt_pose = torch.from_numpy(gt_pose).float()
         return gt_pose
 
@@ -74,7 +74,7 @@ class DataLoader(Dataset):
         return pointcloud
 
     def __len__(self):
-        return self.num_imgs
+        return self.num_pcds
 
     def __getitem__(self, index):
         pointcloud = self.load_pointcloud(index)

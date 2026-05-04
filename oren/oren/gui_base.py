@@ -24,6 +24,11 @@ class GuiBaseConfig(ConfigABC):
     scene_width: int = 2560
     scene_height: int = 1440
     panel_split_ratio: float = 0.7
+    objects_layout: list = field(default_factory=lambda: [
+        ["axis", "scan", "traj", "kf_cams", "curr_cam", "gt_mesh", "octree"],
+        ["sdf", "sdf_prior", "sdf_residual", "mesh", "mesh_prior"],
+        ["sample_surf", "sample_perturbed", "sample_free", "sample_extra"],
+    ])
 
     view_option: str = "follow"  # follow, keyboard, from_file
     view_file: Optional[str] = None
@@ -162,6 +167,9 @@ class GuiDataPacket:
     time_stats: Optional[dict] = None  # time statistics
     loss_stats: Optional[dict] = None  # loss statistics
     gpu_mem_usage: Optional[float] = None  # GPU memory usage in GB
+    cpu_mem_usage: Optional[float] = None  # CPU memory usage in GB
+    gpu_util: Optional[float] = None  # GPU utilization in percent
+    cpu_util: Optional[float] = None  # CPU utilization in percent (process-level)
 
 
 @dataclass
@@ -754,25 +762,21 @@ class GuiBase:
 
         # c. options to show / hide different objects
         self.panel.add_child(o3d_gui.Label("3D Objects:"))
-        object_options_line1 = o3d_gui.Horiz(spacing=sp)
 
         init_objects = [obj.lower() for obj in self.cfg.objects]
 
         self.checkbox_show_axis = o3d_gui.Checkbox("Axis")
         self.checkbox_show_axis.checked = "axis" in init_objects
         self.checkbox_show_axis.set_on_checked(self._on_checkbox_show_axis)
-        object_options_line1.add_child(self.checkbox_show_axis)
         self.widget3d.scene.show_axes(self.checkbox_show_axis.checked)
 
         self.checkbox_show_scan = o3d_gui.Checkbox("Scan")
         self.checkbox_show_scan.checked = "scan" in init_objects
         self.checkbox_show_scan.set_on_checked(self._on_checkbox_show_scan)
-        object_options_line1.add_child(self.checkbox_show_scan)
 
         self.checkbox_show_traj = o3d_gui.Checkbox("Trajectory")
         self.checkbox_show_traj.checked = ("trajectory" in init_objects) or ("traj" in init_objects)
         self.checkbox_show_traj.set_on_checked(self._on_checkbox_show_traj)
-        object_options_line1.add_child(self.checkbox_show_traj)
 
         self.checkbox_show_kf_cams = o3d_gui.Checkbox("KF Cams")
         self.checkbox_show_kf_cams.checked = (
@@ -783,80 +787,85 @@ class GuiBase:
             or ("kf_cams" in init_objects)
         )
         self.checkbox_show_kf_cams.set_on_checked(self._on_checkbox_show_kf_cams)
-        object_options_line1.add_child(self.checkbox_show_kf_cams)
 
         self.checkbox_show_curr_cam = o3d_gui.Checkbox("Current Cam")
         self.checkbox_show_curr_cam.checked = (
             ("current_camera" in init_objects) or ("curr_cam" in init_objects) or ("current_cam" in init_objects)
         )
         self.checkbox_show_curr_cam.set_on_checked(self._on_checkbox_show_curr_cam)
-        object_options_line1.add_child(self.checkbox_show_curr_cam)
-
-        object_options_line2 = o3d_gui.Horiz(spacing=sp)
 
         self.checkbox_show_octree = o3d_gui.Checkbox("Octree")
         self.checkbox_show_octree.checked = "octree" in init_objects
         self.checkbox_show_octree.set_on_checked(self._on_checkbox_show_octree)
-        object_options_line2.add_child(self.checkbox_show_octree)
 
         self.checkbox_show_sdf = o3d_gui.Checkbox("SDF Pred.")
         self.checkbox_show_sdf.checked = ("sdf_slice" in init_objects) or ("sdf" in init_objects)
         self.checkbox_show_sdf.set_on_checked(self._on_checkbox_show_sdf)
-        object_options_line2.add_child(self.checkbox_show_sdf)
 
         self.checkbox_show_sdf_prior = o3d_gui.Checkbox("SDF Prior")
         self.checkbox_show_sdf_prior.checked = ("sdf_slice_prior" in init_objects) or ("sdf_prior" in init_objects)
         self.checkbox_show_sdf_prior.set_on_checked(self._on_checkbox_show_sdf_prior)
-        object_options_line2.add_child(self.checkbox_show_sdf_prior)
 
         self.checkbox_show_sdf_res = o3d_gui.Checkbox("SDF Residual")
         self.checkbox_show_sdf_res.checked = ("sdf_slice_residual" in init_objects) or ("sdf_residual" in init_objects)
         self.checkbox_show_sdf_res.set_on_checked(self._on_checkbox_show_sdf_residual)
-        object_options_line2.add_child(self.checkbox_show_sdf_res)
-
-        object_options_line3 = o3d_gui.Horiz(spacing=sp)
 
         self.checkbox_show_mesh = o3d_gui.Checkbox("Mesh")
         self.checkbox_show_mesh.checked = "mesh" in init_objects
         self.checkbox_show_mesh.set_on_checked(self._on_checkbox_show_mesh)
-        object_options_line3.add_child(self.checkbox_show_mesh)
 
         self.checkbox_show_mesh_by_prior = o3d_gui.Checkbox("Mesh (Prior)")
         self.checkbox_show_mesh_by_prior.checked = "mesh_prior" in init_objects
         self.checkbox_show_mesh_by_prior.set_on_checked(self._on_checkbox_show_mesh_by_prior)
-        object_options_line3.add_child(self.checkbox_show_mesh_by_prior)
 
         self.checkbox_show_gt_mesh = o3d_gui.Checkbox("GT Mesh")
         self.checkbox_show_gt_mesh.checked = "gt_mesh" in init_objects
         self.checkbox_show_gt_mesh.set_on_checked(self._on_checkbox_show_gt_mesh)
-        object_options_line3.add_child(self.checkbox_show_gt_mesh)
 
         self.checkbox_show_sample_surf = o3d_gui.Checkbox("Samples (Surface)")
         self.checkbox_show_sample_surf.checked = "surf" in init_objects or "sample_surf" in init_objects
         self.checkbox_show_sample_surf.set_on_checked(self._on_checkbox_show_sample_surf)
-        object_options_line3.add_child(self.checkbox_show_sample_surf)
-
-        object_options_line4 = o3d_gui.Horiz(spacing=sp)
 
         self.checkbox_show_sample_perturbed = o3d_gui.Checkbox("Samples (Perturbed)")
         self.checkbox_show_sample_perturbed.checked = "perturbed" in init_objects or "sample_perturbed" in init_objects
         self.checkbox_show_sample_perturbed.set_on_checked(self._on_checkbox_show_sample_perturbed)
-        object_options_line4.add_child(self.checkbox_show_sample_perturbed)
 
         self.checkbox_show_sample_free = o3d_gui.Checkbox("Samples (Free)")
         self.checkbox_show_sample_free.checked = "free" in init_objects or "sample_free" in init_objects
         self.checkbox_show_sample_free.set_on_checked(self._on_checkbox_show_sample_free)
-        object_options_line4.add_child(self.checkbox_show_sample_free)
 
         self.checkbox_show_sample_extra = o3d_gui.Checkbox("Samples (Extra)")
         self.checkbox_show_sample_extra.checked = "extra" in init_objects or "sample_extra" in init_objects
         self.checkbox_show_sample_extra.set_on_checked(self._on_checkbox_show_sample_extra)
-        object_options_line4.add_child(self.checkbox_show_sample_extra)
 
-        self.panel.add_child(object_options_line1)
-        self.panel.add_child(object_options_line2)
-        self.panel.add_child(object_options_line3)
-        self.panel.add_child(object_options_line4)
+        objects_dict = dict(
+            axis=self.checkbox_show_axis,
+            scan=self.checkbox_show_scan,
+            traj=self.checkbox_show_traj,
+            kf_cams=self.checkbox_show_kf_cams,
+            curr_cam=self.checkbox_show_curr_cam,
+            octree=self.checkbox_show_octree,
+            sdf=self.checkbox_show_sdf,
+            sdf_prior=self.checkbox_show_sdf_prior,
+            sdf_residual=self.checkbox_show_sdf_res,
+            mesh=self.checkbox_show_mesh,
+            mesh_prior=self.checkbox_show_mesh_by_prior,
+            gt_mesh=self.checkbox_show_gt_mesh,
+            sample_surf=self.checkbox_show_sample_surf,
+            sample_perturbed=self.checkbox_show_sample_perturbed,
+            sample_free=self.checkbox_show_sample_free,
+            sample_extra=self.checkbox_show_sample_extra,
+        )
+        for obj_names in self.cfg.objects_layout:
+            line = o3d_gui.Horiz(spacing=sp)
+            for obj_name in obj_names:
+                obj_name = obj_name.lower()
+                if obj_name in objects_dict:
+                    line.add_child(objects_dict[obj_name])
+                    objects_dict.pop(obj_name)  # remove from dict to avoid adding again in later lines
+                else:
+                    raise ValueError(f"Unknown/duplicate object name in layout: {obj_name}")
+            self.panel.add_child(line)
 
         # d. control styles, frequency, etc.
         self.panel.add_child(o3d_gui.Label("Rendering Options:"))
@@ -1251,9 +1260,10 @@ class GuiBase:
 
         self.panel.add_child(video_buttons_line)
 
-        # l. info tab
+        # l. info tabs
         tabs = o3d_gui.TabControl()
-        tab_info = o3d_gui.Vert(spacing=sp)
+        # INFO
+        tab_info = o3d_gui.Vert(spacing=sp * 0.5)
         self.label_info_experiment_name = o3d_gui.Label(f"Experiment: {self.cfg.experiment_name}")
         tab_info.add_child(self.label_info_experiment_name)
         self.label_info_frame_idx = o3d_gui.Label("Frame:")
@@ -1262,6 +1272,12 @@ class GuiBase:
         tab_info.add_child(self.label_info_traj_length)
         self.label_info_gpu_mem = o3d_gui.Label("GPU Memory Usage:")
         tab_info.add_child(self.label_info_gpu_mem)
+        self.label_info_cpu_mem = o3d_gui.Label("CPU Memory Usage:")
+        tab_info.add_child(self.label_info_cpu_mem)
+        self.label_info_gpu_util = o3d_gui.Label("GPU Utilization:")
+        tab_info.add_child(self.label_info_gpu_util)
+        self.label_info_cpu_util = o3d_gui.Label("CPU Utilization:")
+        tab_info.add_child(self.label_info_cpu_util)
         self.label_info_num_iterations = o3d_gui.Label("Num Iterations:")
         tab_info.add_child(self.label_info_num_iterations)
         self.label_info_num_key_frames = o3d_gui.Label("Num Key Frames:")
@@ -1270,13 +1286,22 @@ class GuiBase:
         tab_info.add_child(self.label_info_training_fps)
         self.label_info_gui_fps = o3d_gui.Label("GUI FPS:")
         tab_info.add_child(self.label_info_gui_fps)
-        self.label_info_timing_and_loss = o3d_gui.Label("Timing:\nLoss:")
-        tab_info.add_child(self.label_info_timing_and_loss)
         tabs.add_tab("Info", tab_info)
-        tab_info = o3d_gui.Vert(spacing=sp)
+        # Timing
+        tab_timing = o3d_gui.Vert(spacing=sp)
+        self.label_info_timing = o3d_gui.Label("Timing:")
+        tab_timing.add_child(self.label_info_timing)
+        tabs.add_tab("Timing", tab_timing)
+        # Loss
+        tab_loss = o3d_gui.Vert(spacing=sp)
+        self.label_info_loss = o3d_gui.Label("Loss:")
+        tab_loss.add_child(self.label_info_loss)
+        tabs.add_tab("Loss", tab_loss)
+        # Camera
+        tab_camera = o3d_gui.Vert(spacing=sp)
         self.label_info_scene_camera = o3d_gui.Label("Scene Camera:\n")
-        tab_info.add_child(self.label_info_scene_camera)
-        tabs.add_tab("Camera", tab_info)
+        tab_camera.add_child(self.label_info_scene_camera)
+        tabs.add_tab("Camera", tab_camera)
         self.panel.add_child(tabs)
 
         # 3. add panel to window
@@ -2428,6 +2453,12 @@ class GuiBase:
                     self.data_packet.loss_stats = packet.loss_stats
                 if packet.gpu_mem_usage is not None:
                     self.data_packet.gpu_mem_usage = packet.gpu_mem_usage
+                if packet.cpu_mem_usage is not None:
+                    self.data_packet.cpu_mem_usage = packet.cpu_mem_usage
+                if packet.gpu_util is not None:
+                    self.data_packet.gpu_util = packet.gpu_util
+                if packet.cpu_util is not None:
+                    self.data_packet.cpu_util = packet.cpu_util
 
                 if not get_latest:
                     break
@@ -2636,7 +2667,7 @@ class GuiBase:
             if self.data_packet.time_stats is not None:
                 fps = 1.0 / (self.data_packet.time_stats.get("train_frame", 1e-6))
                 self.label_info_training_fps.text = f"Training FPS: {fps:.3f}"
-                self.label_info_timing_and_loss.text = f"Timing:\n" + "\n".join(
+                self.label_info_timing.text = f"Timing:\n" + "\n".join(
                     [f"  {k}: {v:.6f} s" for k, v in self.data_packet.time_stats.items()]
                 )
                 self.data_packet.time_stats = None  # reset
@@ -2647,7 +2678,7 @@ class GuiBase:
 
             if self.data_packet.loss_stats is not None:
                 loss_stats = flatten_dict(self.data_packet.loss_stats)
-                self.label_info_timing_and_loss.text += f"\n\nLoss:\n" + "\n".join(
+                self.label_info_loss.text = f"Loss:\n" + "\n".join(
                     [f"  {k}: {v:.6f}" for k, v in loss_stats.items()]
                 )
                 self.data_packet.loss_stats = None  # reset
@@ -2655,6 +2686,18 @@ class GuiBase:
             if self.data_packet.gpu_mem_usage is not None:
                 self.label_info_gpu_mem.text = f"GPU Memory Usage: {self.data_packet.gpu_mem_usage:.3f} GB"
                 self.data_packet.gpu_mem_usage = None  # reset
+
+            if self.data_packet.cpu_mem_usage is not None:
+                self.label_info_cpu_mem.text = f"CPU Memory Usage: {self.data_packet.cpu_mem_usage:.3f} GB"
+                self.data_packet.cpu_mem_usage = None  # reset
+
+            if self.data_packet.gpu_util is not None:
+                self.label_info_gpu_util.text = f"GPU Utilization: {self.data_packet.gpu_util:.1f} %"
+                self.data_packet.gpu_util = None  # reset
+
+            if self.data_packet.cpu_util is not None:
+                self.label_info_cpu_util.text = f"CPU Utilization: {self.data_packet.cpu_util:.1f} %"
+                self.data_packet.cpu_util = None  # reset
 
             self.widget3d.scene.camera.get_model_matrix()
             camera = self.widget3d.scene.camera

@@ -11,21 +11,21 @@ CONFIG_PATH=${SCRIPT_DIR}/../../logs/replica_room0/2025-09-21-20-04-15/bak/confi
 MODEL_PATH=${SCRIPT_DIR}/../../logs/replica_room0/2025-09-21-20-04-15/ckpt/final.pth
 
 # extract mesh
-PYTHONPATH="${SCRIPT_DIR}/.." python3 "${SCRIPT_DIR}/../oren/evaluater_oren.py" \
+PYTHONPATH="${SCRIPT_DIR}/.." python3 "${SCRIPT_DIR}/../oren/evaluator_oren.py" \
     --config ${CONFIG_PATH} \
     --model-path ${MODEL_PATH} \
     --extract-mesh \
     --clean-mesh
 
 # sdf & grad metrics
-PYTHONPATH="${SCRIPT_DIR}/.." python3 "${SCRIPT_DIR}/../oren/evaluater_oren.py" \
+PYTHONPATH="${SCRIPT_DIR}/.." python3 "${SCRIPT_DIR}/../oren/evaluator_oren.py" \
     --config ${CONFIG_PATH} \
     --model-path ${MODEL_PATH} \
     --sdf-and-grad-metrics \
     --test-set-dir ${DATASET_DIR}/${SCENE}/test_set
 
 # mesh metrics
-PYTHONPATH="${SCRIPT_DIR}/.." python3 "${SCRIPT_DIR}/../oren/evaluater_oren.py" \
+PYTHONPATH="${SCRIPT_DIR}/.." python3 "${SCRIPT_DIR}/../oren/evaluator_oren.py" \
     --config "${CONFIG_PATH}" \
     --model-path "${MODEL_PATH}" \
     --mesh-metrics \
