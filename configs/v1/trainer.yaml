@@ -10,11 +10,12 @@ data:
         data_path: ""
         min_depth: 0.0
         max_depth: -1.0
-        bound_min:
-        bound_max:
+    apply_bound: false   # if false, bbox crop is applied after generate_sdf_samples via valid_mask
+    bound_min:           # null -> dataset auto-derives from mesh
+    bound_max:
     start_frame: 0
     end_frame: -1
-bound_min:
+bound_min:               # used for mesh extraction; auto-overwritten from dataset bounds at trainer init
 bound_max:
 key_frame_set:
     identifier: oren.key_frame_set.KeyFrameSetConfig

@@ -10,12 +10,13 @@ data:
         data_path: "data/replica/room0"
         min_depth: 0.0
         max_depth: -1.0
-        bound_min:
-        bound_max:
+    apply_bound: false   # if false, bbox crop is applied after generate_sdf_samples via valid_mask
+    bound_min:           # null -> dataset auto-derives from mesh
+    bound_max:
     start_frame: 0
     end_frame: -1
-bound_min: [-10, -10, -10] # will be overwritten by the dataset args
-bound_max: [10, 10, 10] # will be overwritten by the dataset args
+bound_min: [-10, -10, -10] # used for mesh extraction; auto-overwritten from dataset bounds at trainer init
+bound_max: [10, 10, 10]
 key_frame_set:
     identifier: oren.key_frame_set.KeyFrameSetConfig
     insert_method: intersection

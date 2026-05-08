@@ -6,10 +6,11 @@ data:
     dataset_args:
         min_depth: 0.8
         max_depth: 40.0
-        # Derived from /home/daizhirui/Data/NewerCollege/gt-mesh-small.ply
-        # mesh extent X[-5.04, 55.45] Y[-67.99, -1.81] Z[-1.37, 26.16]; ~2m padding.
-        bound_min: [-7.0, -70.0, -3.0]
-        bound_max: [58.0, 0.0, 28.0]
+    apply_bound: false   # if false, bbox crop is applied after generate_sdf_samples via valid_mask
+    # Derived from /home/daizhirui/Data/NewerCollege/gt-mesh-small.ply
+    # mesh extent X[-5.04, 55.45] Y[-67.99, -1.81] Z[-1.37, 26.16]; ~2m padding.
+    bound_min: [-7.0, -70.0, -3.0]
+    bound_max: [58.0, 0.0, 28.0]
 
-bound_min: [-7.0, -70.0, -3.0]  # overwritten by data.dataset_args at runtime
-bound_max: [58.0, 0.0, 28.0]    # overwritten by data.dataset_args at runtime
+bound_min: [-7.0, -70.0, -3.0]  # auto-overwritten from data.bound_* at trainer init
+bound_max: [58.0, 0.0, 28.0]

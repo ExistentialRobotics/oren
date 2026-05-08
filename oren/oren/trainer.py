@@ -44,6 +44,9 @@ class Trainer:
             self.cfg.bound_min = (self.data_stream.bound_min - 0.1).cpu().tolist()
             self.cfg.bound_max = (self.data_stream.bound_max + 0.1).cpu().tolist()
 
+        self.bound_min = torch.tensor(self.cfg.bound_min, dtype=torch.float32, device=self.cfg.device)
+        self.bound_max = torch.tensor(self.cfg.bound_max, dtype=torch.float32, device=self.cfg.device)
+
         if not self.streaming:
             if self.cfg.data.end_frame < 0:
                 self.cfg.data.end_frame = len(self.data_stream)
@@ -280,6 +283,11 @@ class Trainer:
                 device=self.cfg.device,
             )
 
+            mask = torch.ones_like(self.samples.sampled_xyz[..., 0], dtype=torch.bool)
+            if not self.cfg.data.apply_bound:
+                mask = mask & (self.samples.sampled_xyz >= self.bound_min).all(dim=-1)
+                mask = mask & (self.samples.sampled_xyz <= self.bound_max).all(dim=-1)
+
         # self.samples.sampled_xyz: (n, m, 3)
         num_rays = self.samples.sampled_xyz.shape[0]
         if self.cfg.grad_method == "autodiff":
@@ -295,7 +303,8 @@ class Trainer:
                 voxel_indices_minus = self.find_voxel_indices(offset_points_minus)  # (n, m, 3)
         with self.timer_find_voxel_indices_sampled_xyz:
             voxel_indices = self.find_voxel_indices(self.samples.sampled_xyz)  # (n, m)
-            assert voxel_indices.min() != -1, "voxel_indices has -1"
+            mask = mask & (voxel_indices != -1)
+            # assert voxel_indices.min() != -1, "voxel_indices has -1"
 
         bs = int(self.cfg.batch_size / self.samples.sampled_xyz.shape[1])
 
@@ -350,6 +359,7 @@ class Trainer:
                         gt_sdf_stratified=self.samples.stratified_sdf,
                         positive_perturbation_mask=self.samples.positive_perturbation_mask,
                         perturb_eta=self.cfg.sample_rays.sigma_s,
+                        valid_mask=mask,
                     )
                     loss.backward()
                     self.optimizer.step()

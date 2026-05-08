@@ -18,6 +18,7 @@ class DataLoader(Dataset):
         data_path: str,
         min_depth: float = 0.0,
         max_depth: float = -1.0,
+        apply_bound: bool = False,
         bound_min: Optional[torch.Tensor] = None,
         bound_max: Optional[torch.Tensor] = None,
     ):
@@ -28,6 +29,7 @@ class DataLoader(Dataset):
         self.data_path = data_path
         self.min_depth = min_depth
         self.max_depth = max_depth
+        self.apply_bound = apply_bound
         self.bound_min = bound_min
         self.bound_max = bound_max
 
@@ -86,7 +88,7 @@ class DataLoader(Dataset):
         depth = self.load_depth(index)
         pose = self.gt_pose[index]
         frame = DepthFrame(index, depth, self.K, pose)
-        if self.bound_min is not None and self.bound_max is not None:
+        if self.apply_bound:
             frame.apply_bound(self.bound_min, self.bound_max)
         return frame
 

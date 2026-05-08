@@ -1,9 +1,17 @@
 from dataclasses import dataclass
+from typing import Optional
 
 import torch
 import torch.nn as nn
 
 from oren.utils.config_abc import ConfigABC
+
+
+def _masked_mean(values: torch.Tensor, mask: Optional[torch.Tensor]) -> torch.Tensor:
+    if mask is None:
+        return values.mean()
+    weights = mask.to(values.dtype)
+    return (values * weights).sum() / weights.sum().clamp(min=1.0)
 
 
 @dataclass
@@ -40,32 +48,36 @@ class Criterion(nn.Module):
         self.n_perturbed = n_perturbed
 
         if self.cfg.boundary_loss_type == "L1":
-            self.boundary_loss_fn = nn.L1Loss(reduction="mean")
+            self.boundary_loss_fn = nn.L1Loss(reduction="none")
         elif self.cfg.boundary_loss_type == "L2":
-            self.boundary_loss_fn = nn.MSELoss(reduction="mean")
+            self.boundary_loss_fn = nn.MSELoss(reduction="none")
         else:
             raise ValueError(f"Unknown boundary loss type: {self.cfg.boundary_loss_type}")
 
         if self.cfg.perturbation_loss_type == "L1":
-            self.perturbation_loss_fn = nn.L1Loss(reduction="mean")
+            self.perturbation_loss_fn = nn.L1Loss(reduction="none")
         elif self.cfg.perturbation_loss_type == "L2":
-            self.perturbation_loss_fn = nn.MSELoss(reduction="mean")
+            self.perturbation_loss_fn = nn.MSELoss(reduction="none")
         else:
             raise ValueError(f"Unknown perturbation loss type: {self.cfg.perturbation_loss_type}")
 
         if self.cfg.eikonal_loss_type == "L1":
-            self.eikonal_loss_fn = nn.L1Loss(reduction="mean")
+            self.eikonal_loss_fn = nn.L1Loss(reduction="none")
         elif self.cfg.eikonal_loss_type == "L2":
-            self.eikonal_loss_fn = nn.MSELoss(reduction="mean")
+            self.eikonal_loss_fn = nn.MSELoss(reduction="none")
         else:
             raise ValueError(f"Unknown eikonal loss type: {self.cfg.eikonal_loss_type}")
 
         if self.cfg.projection_loss_type == "L1":
-            self.projection_loss_fn = nn.L1Loss(reduction="mean")
+            self.projection_loss_fn = nn.L1Loss(reduction="none")
         elif self.cfg.projection_loss_type == "L2":
-            self.projection_loss_fn = nn.MSELoss(reduction="mean")
+            self.projection_loss_fn = nn.MSELoss(reduction="none")
         else:
             raise ValueError(f"Unknown projection loss type: {self.cfg.projection_loss_type}")
+
+        self.mask_surface = None
+        self.mask_perturb = None
+        self.mask_strat = None
 
     def forward(
         self,
@@ -77,6 +89,7 @@ class Criterion(nn.Module):
         gt_sdf_stratified: torch.Tensor,
         positive_perturbation_mask: torch.Tensor,
         perturb_eta: float,
+        valid_mask: Optional[torch.Tensor] = None,
     ):
         """
         Compute the total loss as a weighted sum of individual loss components based on the configuration.
@@ -89,7 +102,17 @@ class Criterion(nn.Module):
             gt_sdf_stratified: (B, n_stratified) Ground truth SDF values for stratified samples.
             positive_perturbation_mask: (B, n_perturbed) Boolean mask indicating which perturbed samples are in free space (positive SDF).
             perturb_eta: float, the sigma value used for the perturbation loss lower bound.
+            valid_mask: (B, N) Optional boolean mask. False entries are excluded from every loss reduction.
         """
+        if valid_mask is not None:
+            self.mask_surface = valid_mask[:, -1]
+            self.mask_perturb = valid_mask[:, self.n_stratified : self.n_stratified + self.n_perturbed]
+            self.mask_strat = valid_mask[:, : self.n_stratified]
+        else:
+            self.mask_surface = None
+            self.mask_perturb = None
+            self.mask_strat = None
+
         loss = 0
         loss_dict = {}
         if self.cfg.boundary_loss_weight > 0:
@@ -176,8 +199,8 @@ class Criterion(nn.Module):
 
     def get_boundary_loss(self, pred_sdf: torch.Tensor):
         pred_sdf_surface = pred_sdf[:, -1]
-        boundary_loss = self.boundary_loss_fn(pred_sdf_surface, torch.zeros_like(pred_sdf_surface))
-        return boundary_loss
+        per_elem = self.boundary_loss_fn(pred_sdf_surface, torch.zeros_like(pred_sdf_surface))
+        return _masked_mean(per_elem, self.mask_surface)
 
     def get_perturbation_loss(
         self,
@@ -204,43 +227,52 @@ class Criterion(nn.Module):
         below_lower_loss = torch.exp(self.cfg.perturbation_loss_exp_penalty * below_lower) - 1
         perturb_loss = above_upper_loss + below_lower_loss
 
-        return perturb_loss.mean()
+        return _masked_mean(perturb_loss, self.mask_perturb)
 
     def get_eikonal_loss_surface(self, grad_norm: torch.Tensor):
         grad_norm_surface = grad_norm[:, -1]  # surface
-        eikonal_loss_surface = self.eikonal_loss_fn(grad_norm_surface, torch.ones_like(grad_norm_surface))
-        return eikonal_loss_surface
+        per_elem = self.eikonal_loss_fn(grad_norm_surface, torch.ones_like(grad_norm_surface))
+        return _masked_mean(per_elem, self.mask_surface)
 
     def get_eikonal_loss_perturbation(self, grad_norm: torch.Tensor):
         grad_norm_perturbation = grad_norm[:, self.n_stratified : self.n_stratified + self.n_perturbed]
-        eikonal_loss_perturbation = self.eikonal_loss_fn(
-            grad_norm_perturbation, torch.ones_like(grad_norm_perturbation)
-        )
-        return eikonal_loss_perturbation
+        per_elem = self.eikonal_loss_fn(grad_norm_perturbation, torch.ones_like(grad_norm_perturbation))
+        return _masked_mean(per_elem, self.mask_perturb)
 
     def get_eikonal_loss_space(self, grad_norm: torch.Tensor):
         grad_norm_space = grad_norm[:, : self.n_stratified]  # free space
-        eikonal_loss_space = self.eikonal_loss_fn(grad_norm_space, torch.ones_like(grad_norm_space))
-        return eikonal_loss_space
+        per_elem = self.eikonal_loss_fn(grad_norm_space, torch.ones_like(grad_norm_space))
+        return _masked_mean(per_elem, self.mask_strat)
 
     def get_projection_loss(self, pred_sdf: torch.Tensor, gt_sdf_stratified: torch.Tensor):
-        return self.projection_loss_fn(pred_sdf, gt_sdf_stratified)
+        per_elem = self.projection_loss_fn(pred_sdf, gt_sdf_stratified)
+        return _masked_mean(per_elem, self.mask_strat)
 
     def get_sign_loss(
         self,
         positive_sdf_mask: torch.Tensor,
         negative_sdf_mask: torch.Tensor,
         pred_sdf: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
     ):
+        if mask is not None:
+            positive_sdf_mask = positive_sdf_mask & mask
+            negative_sdf_mask = negative_sdf_mask & mask
         free_pred = pred_sdf[positive_sdf_mask.squeeze()]
         occ_pred = pred_sdf[negative_sdf_mask.squeeze()]
-        sign_loss_free = (torch.tanh(self.cfg.sign_loss_temperature * free_pred) - 1).abs().mean()
-        sign_loss_occ = (torch.tanh(self.cfg.sign_loss_temperature * occ_pred) + 1).abs().mean()
+        if free_pred.numel() == 0:
+            sign_loss_free = pred_sdf.new_zeros(())
+        else:
+            sign_loss_free = (torch.tanh(self.cfg.sign_loss_temperature * free_pred) - 1).abs().mean()
+        if occ_pred.numel() == 0:
+            sign_loss_occ = pred_sdf.new_zeros(())
+        else:
+            sign_loss_occ = (torch.tanh(self.cfg.sign_loss_temperature * occ_pred) + 1).abs().mean()
         return sign_loss_free, sign_loss_occ
 
     def get_heat_loss(self, pred_sdf: torch.Tensor, grad_norm: torch.Tensor):
         pred_sdf = pred_sdf[:, : self.n_stratified]  # only consider free space samples
         grad_norm = grad_norm[:, : self.n_stratified]
-        heat = torch.exp(-self.cfg.heat_loss_lambda * pred_sdf.abs()).unsqueeze(1)
-        heat_loss = (0.5 * heat**2 * (grad_norm**2 + 1)).mean()
-        return heat_loss
+        heat = torch.exp(-self.cfg.heat_loss_lambda * pred_sdf.abs())
+        per_elem = 0.5 * heat**2 * (grad_norm**2 + 1)
+        return _masked_mean(per_elem, self.mask_strat)

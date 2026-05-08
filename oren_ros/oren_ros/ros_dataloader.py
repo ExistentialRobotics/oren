@@ -51,6 +51,7 @@ class RosDataLoader:
     def __init__(
         self,
         ros_node: Node,
+        apply_bound: bool = False,
         bound_min: Optional[list[float]] = None,
         bound_max: Optional[list[float]] = None,
         intrinsics_fx: Optional[float] = None,
@@ -61,6 +62,7 @@ class RosDataLoader:
         max_depth: float = -1.0,
     ):
         self.node = ros_node
+        self.apply_bound = apply_bound
         self.bound_min = bound_min
         self.bound_max = bound_max
         self.intrinsics = None
@@ -71,6 +73,10 @@ class RosDataLoader:
             self.bound_min = torch.tensor(self.bound_min, dtype=torch.float32)
         if self.bound_max is not None:
             self.bound_max = torch.tensor(self.bound_max, dtype=torch.float32)
+
+        if self.apply_bound:
+            assert self.bound_min is not None, "bound_min is required when apply_bound is True"
+            assert self.bound_max is not None, "bound_max is required when apply_bound is True"
 
         # Topic configuration is purely ROS-param driven. Defaults live on the
         # RosTopicParam dataclass; declare_ros_params seeds `<topic>.path` and
@@ -350,6 +356,8 @@ class RosDataLoader:
             min_depth=self.min_depth if self.min_depth >= 0 else None,
             max_depth=self.max_depth if self.max_depth > 0 else None,
         )
+        if self.apply_bound:
+            frame.apply_bound(self.bound_min, self.bound_max)
         self._enqueue(frame)
 
     def _enqueue_lidar(self, points: torch.Tensor, pose: torch.Tensor) -> None:
@@ -357,7 +365,7 @@ class RosDataLoader:
             self._frame_count += 1
             fid = self._frame_count
         frame = LiDARFrame(fid=fid, pointcloud=points, ref_pose=pose)
-        if self.bound_min is not None and self.bound_max is not None:
+        if self.apply_bound:
             frame.apply_bound(self.bound_min, self.bound_max)
         self._enqueue(frame)
 

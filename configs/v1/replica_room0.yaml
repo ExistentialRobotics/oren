@@ -8,7 +8,8 @@ data:
     dataset_args:
         data_path: "replica/room0"
         max_depth: 10.0
-        bound_min: [0.5, 0.5, 0.5]
-        bound_max: [8.5, 5.5, 3.5]
-bound_min: [0, 0, 0]
+    apply_bound: false   # if false, bbox crop is applied after generate_sdf_samples via valid_mask
+    bound_min: [0.5, 0.5, 0.5]
+    bound_max: [8.5, 5.5, 3.5]
+bound_min: [0, 0, 0]     # used for mesh extraction; auto-overwritten from data.bound_* at trainer init
 bound_max: [9.0, 6.0, 4.0]

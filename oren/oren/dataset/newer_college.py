@@ -17,12 +17,18 @@ class DataLoader(Dataset):
         data_path: str,
         min_depth: float = 0.0,
         max_depth: float = -1.0,
+        apply_bound: bool = False,
         bound_min: Optional[torch.Tensor] = None,
         bound_max: Optional[torch.Tensor] = None,
     ):
+        data_path = osp.expanduser(data_path)
+        data_path = osp.abspath(data_path)
+        data_path = data_path.rstrip("/")
+
         self.data_path = data_path
         self.min_depth = min_depth
         self.max_depth = max_depth
+        self.apply_bound = apply_bound
         self.bound_min = bound_min
         self.bound_max = bound_max
 
@@ -77,7 +83,7 @@ class DataLoader(Dataset):
         pointcloud = self.load_pointcloud(index)
         pose = self.gt_pose[index]
         frame = LiDARFrame(index, pointcloud, pose)
-        if self.bound_min is not None and self.bound_max is not None:
+        if self.apply_bound:
             frame.apply_bound(self.bound_min, self.bound_max)
         return frame
 

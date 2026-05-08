@@ -22,8 +22,8 @@ def generate_sample_mask(shape, num_samples: int):
 class SampleRaysConfig(ConfigABC):
     n_stratified: int = 20  # number of stratified samples
     n_perturbed: int = 8  # number of perturbed samples
-    depth_min: float = 0.07  # minimum depth value
-    depth_max: float = 10.0  # maximum depth value
+    depth_min: float = 0.07  # minimum (sensor) depth value
+    depth_max: float = 10.0  # maximum (sensor) depth value
     surface_margin: float = 0.10  # additional range beyond surface
     sigma_s: float = 0.05  # standard deviation for Gaussian sampling
 
