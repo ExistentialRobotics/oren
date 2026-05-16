@@ -44,4 +44,5 @@ class TrainerConfig(ConfigABC):
     ckpt_interval: int = -1  # interval to save checkpoints, -1 means no intermediate checkpoints
     profiling: bool = False
     profiling_verbose: bool = False
+    verbose_training: bool = False
     frozen_model_path: Optional[str] = None

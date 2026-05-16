@@ -40,7 +40,10 @@ class Trainer:
         # set the bound automatically from the dataset if available.
         # the bound is used for evaluation and mesh extraction.
         # the training does not rely on the bound.
-        if self.data_stream.bound_min is not None and self.data_stream.bound_max is not None:
+        if (
+            self.data_stream.bound_min is not None
+            and self.data_stream.bound_max is not None
+        ):
             self.cfg.bound_min = (self.data_stream.bound_min - 0.1).cpu().tolist()
             self.cfg.bound_max = (self.data_stream.bound_max + 0.1).cpu().tolist()
 
@@ -50,8 +53,12 @@ class Trainer:
         if not self.streaming:
             if self.cfg.data.end_frame < 0:
                 self.cfg.data.end_frame = len(self.data_stream)
-            self.cfg.data.start_frame = min(self.cfg.data.start_frame, len(self.data_stream) - 1)
-            self.cfg.data.end_frame = min(self.cfg.data.end_frame, len(self.data_stream))
+            self.cfg.data.start_frame = min(
+                self.cfg.data.start_frame, len(self.data_stream) - 1
+            )
+            self.cfg.data.end_frame = min(
+                self.cfg.data.end_frame, len(self.data_stream)
+            )
         self.current_frame_idx = self.cfg.data.start_frame
 
         self.key_frame_set = KeyFrameSet(
@@ -81,20 +88,36 @@ class Trainer:
 
         timer_on = self.cfg.profiling
         verbose = self.cfg.profiling_verbose
-        self.timer_octree_insert = GpuTimer("octree insert", enable=timer_on, verbose=verbose)
-        self.timer_key_frame_set_update = GpuTimer("key frame set update", enable=timer_on, verbose=verbose)
-        self.timer_train_frame = GpuTimer("train with frame", enable=timer_on, verbose=verbose)
-        self.timer_select_key_frames = GpuTimer("select key frames", enable=timer_on, verbose=verbose)
-        self.timer_sample_rays = GpuTimer("sample rays", enable=timer_on, verbose=verbose)
-        self.timer_generate_sdf_samples = GpuTimer("generate sdf samples", enable=timer_on, verbose=verbose)
-        self.timer_compute_offset_points = GpuTimer("compute offset points", enable=timer_on, verbose=verbose)
+        self.timer_octree_insert = GpuTimer(
+            "octree insert", enable=timer_on, verbose=verbose
+        )
+        self.timer_key_frame_set_update = GpuTimer(
+            "key frame set update", enable=timer_on, verbose=verbose
+        )
+        self.timer_train_frame = GpuTimer(
+            "train with frame", enable=timer_on, verbose=verbose
+        )
+        self.timer_select_key_frames = GpuTimer(
+            "select key frames", enable=timer_on, verbose=verbose
+        )
+        self.timer_sample_rays = GpuTimer(
+            "sample rays", enable=timer_on, verbose=verbose
+        )
+        self.timer_generate_sdf_samples = GpuTimer(
+            "generate sdf samples", enable=timer_on, verbose=verbose
+        )
+        self.timer_compute_offset_points = GpuTimer(
+            "compute offset points", enable=timer_on, verbose=verbose
+        )
         self.timer_find_voxel_indices_offset_points = GpuTimer(
             "find voxel indices for offset points", enable=timer_on, verbose=verbose
         )
         self.timer_find_voxel_indices_sampled_xyz = GpuTimer(
             "find voxel indices for sampled_xyz", enable=timer_on, verbose=verbose
         )
-        self.timer_training_iteration = GpuTimer("training iteration", enable=timer_on, verbose=verbose)
+        self.timer_training_iteration = GpuTimer(
+            "training iteration", enable=timer_on, verbose=verbose
+        )
 
         self.training_iteration_end_callback: Callable[[Trainer], None] = None  # type: ignore
         self.training_frame_start_callback: Callable[[Trainer, Frame], bool] = None  # type: ignore
@@ -135,7 +158,8 @@ class Trainer:
                 self.save_model("final.pth")
 
     def _train_streaming(self) -> None:
-        pbar = tqdm(desc="Mapping (streaming)", ncols=120, leave=False)
+        if self.cfg.verbose_training:
+            pbar = tqdm(desc="Mapping (streaming)", ncols=120, leave=False)
         try:
             # init frame_id for streaming source, which is only used for logging and checkpoint naming.
             # self.current_frame_idx is the fetching counter for streaming source, which is increased
@@ -148,7 +172,9 @@ class Trainer:
                     # the loader exposes which via `is_shutdown` (default True for sources without it,
                     # so non-ROS streaming sources keep non-streaming behavior).
                     if getattr(self.data_stream, "is_shutdown", True):
-                        self.logger.info("No more frames (data stream closed), finish mapping.")
+                        self.logger.info(
+                            "No more frames (data stream closed), finish mapping."
+                        )
                         return
                     # Transient idle: keep optimizing on existing keyframes.
                     if not self.train_with_frame(None):
@@ -157,9 +183,11 @@ class Trainer:
                 if not self._step_one_frame(frame, frame_id):
                     return
                 frame_id += 1  # increase frame_id when frame is not None and processed successfully
-                pbar.update(1)
+                if self.cfg.verbose_training:
+                    pbar.update(1)
         finally:
-            pbar.close()
+            if self.cfg.verbose_training:
+                pbar.close()
 
     def _train_bounded(self) -> None:
         for frame_id in tqdm(
@@ -185,7 +213,7 @@ class Trainer:
         with self.timer_key_frame_set_update:
             is_key_frame = self.update_key_frame_set(frame, seen_voxels)
 
-        if is_key_frame:
+        if is_key_frame and self.cfg.verbose_training:
             self.logger.info(f"Frame {frame_id} is selected as a key frame.")
 
         with self.timer_train_frame:
@@ -299,8 +327,12 @@ class Trainer:
                     offset_points_minus,
                 ) = self.compute_offset_points_for_finite_diff(self.samples.sampled_xyz)
             with self.timer_find_voxel_indices_offset_points:
-                voxel_indices_plus = self.find_voxel_indices(offset_points_plus)  # (n, m, 3)
-                voxel_indices_minus = self.find_voxel_indices(offset_points_minus)  # (n, m, 3)
+                voxel_indices_plus = self.find_voxel_indices(
+                    offset_points_plus
+                )  # (n, m, 3)
+                voxel_indices_minus = self.find_voxel_indices(
+                    offset_points_minus
+                )  # (n, m, 3)
         with self.timer_find_voxel_indices_sampled_xyz:
             voxel_indices = self.find_voxel_indices(self.samples.sampled_xyz)  # (n, m)
             mask = mask & (voxel_indices != -1)
@@ -321,18 +353,24 @@ class Trainer:
                         j = min(i + bs, num_rays)
                         points = self.samples.sampled_xyz[i:j]  # (b, m, 3)
                         voxel_indices_batch = voxel_indices[i:j]
-                        _, sdf_prior, _, sdf_pred = self.model(points, voxel_indices_batch)
+                        _, sdf_prior, _, sdf_pred = self.model(
+                            points, voxel_indices_batch
+                        )
                         if self.cfg.grad_method == "autodiff":
                             sdf_grad = self.compute_sdf_grad_autodiff(points, sdf_pred)
-                            sdf_prior_grad = self.compute_sdf_grad_autodiff(points, sdf_prior)
+                            sdf_prior_grad = self.compute_sdf_grad_autodiff(
+                                points, sdf_prior
+                            )
                         else:
-                            sdf_grad, sdf_prior_grad = self.compute_sdf_grad_finite_difference(
-                                points=points,
-                                offset_points_plus=offset_points_plus[i:j],
-                                offset_points_minus=offset_points_minus[i:j],
-                                voxel_indices_plus=voxel_indices_plus[i:j],
-                                voxel_indices_minus=voxel_indices_minus[i:j],
-                            )[:2]
+                            sdf_grad, sdf_prior_grad = (
+                                self.compute_sdf_grad_finite_difference(
+                                    points=points,
+                                    offset_points_plus=offset_points_plus[i:j],
+                                    offset_points_minus=offset_points_minus[i:j],
+                                    voxel_indices_plus=voxel_indices_plus[i:j],
+                                    voxel_indices_minus=voxel_indices_minus[i:j],
+                                )[:2]
+                            )
 
                         sdf_pred_all.append(sdf_pred)
                         sdf_prior_all.append(sdf_prior)  # (b, m)
@@ -365,9 +403,10 @@ class Trainer:
                     self.optimizer.step()
             self.global_step += 1
 
-            self.logger.info(f"loss_dict: {self.loss_dict}")
-            for k, v in self.loss_dict.items():
-                self.logger.tb.add_scalar(f"loss/{k}", v, self.global_step)
+            if self.cfg.verbose_training:
+                self.logger.info(f"loss_dict: {self.loss_dict}")
+                for k, v in self.loss_dict.items():
+                    self.logger.tb.add_scalar(f"loss/{k}", v, self.global_step)
 
             if self.training_iteration_end_callback is not None:
                 self.training_iteration_end_callback(self)
@@ -439,9 +478,15 @@ class Trainer:
         """
         eps = self.cfg.finite_difference_eps
         if offset_points_plus is None or offset_points_minus is None:
-            offset_points_plus, offset_points_minus = self.compute_offset_points_for_finite_diff(points)
-        voxel_indices_plus, sdf_prior_plus, _, sdf_plus = self.model(offset_points_plus, voxel_indices_plus)
-        voxel_indices_minus, sdf_prior_minus, _, sdf_minus = self.model(offset_points_minus, voxel_indices_minus)
+            offset_points_plus, offset_points_minus = (
+                self.compute_offset_points_for_finite_diff(points)
+            )
+        voxel_indices_plus, sdf_prior_plus, _, sdf_plus = self.model(
+            offset_points_plus, voxel_indices_plus
+        )
+        voxel_indices_minus, sdf_prior_minus, _, sdf_minus = self.model(
+            offset_points_minus, voxel_indices_minus
+        )
 
         grad = (sdf_plus - sdf_minus) / (2 * eps)
         prior_grad = (sdf_prior_plus - sdf_prior_minus) / (2 * eps)
@@ -473,7 +518,9 @@ class Trainer:
         field = "sdf_prior" if prior else "sdf"
         bound_min = bound_min if bound_min is not None else self.cfg.bound_min
         bound_max = bound_max if bound_max is not None else self.cfg.bound_max
-        grid_resolution = grid_resolution if grid_resolution is not None else self.cfg.mesh_resolution
+        grid_resolution = (
+            grid_resolution if grid_resolution is not None else self.cfg.mesh_resolution
+        )
         iso_value = iso_value if iso_value is not None else self.cfg.mesh_iso_value
         self.logger.info(
             f"Extracting mesh ({field}) with bound_min={bound_min}, bound_max={bound_max}, "
@@ -490,7 +537,9 @@ class Trainer:
         self.logger.log_mesh(mesh, path)
         self.logger.info(f"Mesh ({field}) saved to {path}.")
 
-    def query_sdf(self, points: torch.Tensor, return_grad: bool = True, prior_only: bool = False) -> dict:
+    def query_sdf(
+        self, points: torch.Tensor, return_grad: bool = True, prior_only: bool = False
+    ) -> dict:
         """Forward the model on the given points. Returns dict with sdf and (optional) sdf_grad."""
         return self.evaluator.forward_model(
             self.model,
@@ -570,7 +619,9 @@ class Trainer:
 
                 slice_config = slice_configs[axis]
                 axis_name = slice_config["axis_name"]
-                slice_bound = slice_result["slice_bound"].tolist()  # (bound_min, bound_max) for the two axes
+                slice_bound = slice_result[
+                    "slice_bound"
+                ].tolist()  # (bound_min, bound_max) for the two axes
 
                 for slice_name in ["sdf_prior", "sdf_residual", "sdf"]:
                     slice_values = slice_result[slice_name].cpu().numpy()
@@ -593,7 +644,9 @@ class Trainer:
                     plt.tight_layout()
                     img_path = f"slice_{axis_name}_{slice_name}.png"
                     if epoch_dir is not None:
-                        img_path = os.path.join(self.logger.misc_dir, epoch_dir, img_path)
+                        img_path = os.path.join(
+                            self.logger.misc_dir, epoch_dir, img_path
+                        )
                         os.makedirs(os.path.dirname(img_path), exist_ok=True)
                     else:
                         img_path = os.path.join(self.logger.misc_dir, img_path)
