@@ -19,6 +19,7 @@ model:
         semi_sparse_depth: 5
         init_voxel_num: 10000000
         insertion_threshold: 20
+        sdf_prior_init: 0.1
 sample_rays:
     depth_min: 0.3
     depth_max: 20.0

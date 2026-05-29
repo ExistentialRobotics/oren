@@ -17,3 +17,4 @@ class OctreeConfig(ConfigABC):
     residual_feature_dim: int = 4
     residual_num_levels: int = 3
     independent_smallest_leaf_vertex: bool = False
+    sdf_prior_init: float = 0.0  # initial SDF value at every vertex; positive biases unseen space as free

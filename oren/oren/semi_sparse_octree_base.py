@@ -27,7 +27,7 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
 
         # Initialize learnable parameters for SDF and gradient priors of each vertex
         self.sdf_priors = torch.nn.Parameter(
-            torch.zeros((self.cfg.init_voxel_num,), dtype=torch.float32),
+            torch.full((self.cfg.init_voxel_num,), self.cfg.sdf_prior_init, dtype=torch.float32),
             requires_grad=True,
         )
         self.grad_priors = torch.nn.Parameter(
