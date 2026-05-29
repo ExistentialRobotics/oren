@@ -1,0 +1,30 @@
+base_config: ../trainer-replica.yaml
+exp_name: replica/warehouse
+bound_min: [-40.0, -60.0, 0.0]
+bound_max: [40.0, 60.0, 10.0]
+data:
+    dataset_args:
+        data_path: "data/warehouse/replica"
+        min_depth: 0.3
+        max_depth: 20.0
+frame_downsample: 10
+key_frame_set:
+    insert_interval: 20
+    selection_window_size: 8
+model:
+    octree_cfg:
+        resolution: 0.25
+        # tree_depth=10: 2^9*0.25=128m covers max coord 90m
+        tree_depth: 9
+        semi_sparse_depth: 5
+        init_voxel_num: 10000000
+        insertion_threshold: 20
+sample_rays:
+    depth_min: 0.3
+    depth_max: 20.0
+    sigma_s: 0.03
+    surface_margin: 0.09
+criterion:
+    perturbation_loss_exp_penalty: 10.0
+grad_clip: 0.0
+mesh_resolution: 0.10

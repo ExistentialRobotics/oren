@@ -2,6 +2,8 @@ import os
 import random
 from typing import Callable, Optional
 
+import torch as _torch  # used only for anomaly detection setup
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -100,6 +102,10 @@ class Trainer:
         self.training_frame_start_callback: Callable[[Trainer, Frame], bool] = None  # type: ignore
         self.training_end_callback: Callable[[Trainer], None] = None  # type: ignore
 
+        if self.cfg.detect_nan:
+            _torch.autograd.set_detect_anomaly(True)
+            self.logger.info("NaN detection enabled (anomaly detection + per-tensor checks). Training will be slow.")
+
         self.evaluator = OrenEvaluator(
             batch_size=self.cfg.batch_size,
             clean_mesh=self.cfg.clean_mesh,
@@ -162,12 +168,13 @@ class Trainer:
             pbar.close()
 
     def _train_bounded(self) -> None:
-        for frame_id in tqdm(
-            range(self.cfg.data.start_frame, self.cfg.data.end_frame),
-            desc="Mapping",
-            ncols=120,
-            leave=False,
-        ):
+        frame_indices = range(
+            self.cfg.data.start_frame,
+            self.cfg.data.end_frame,
+            self.cfg.frame_downsample,
+        )
+        for frame_id in tqdm(frame_indices, desc="Mapping", ncols=120, leave=False):
+            self.current_frame_idx = frame_id
             frame = self.fetch_one_frame()
             if frame is None:
                 self.logger.info("No more valid frames, finish mapping.")
@@ -350,6 +357,10 @@ class Trainer:
                         sdf_grad_all = torch.cat(sdf_grad_all, dim=0)
                         sdf_prior_grad_all = torch.cat(sdf_prior_grad_all, dim=0)
 
+                    if self.cfg.detect_nan:
+                        self._log_nan("sdf_pred", sdf_pred_all)
+                        self._log_nan("sdf_grad", sdf_grad_all)
+
                     loss, self.loss_dict = self.criterion(
                         pred_sdf=sdf_pred_all,
                         pred_prior=sdf_prior_all,
@@ -362,6 +373,14 @@ class Trainer:
                         valid_mask=mask,
                     )
                     loss.backward()
+                    if self.cfg.detect_nan:
+                        for p in self.model.parameters():
+                            if p.grad is not None:
+                                p.grad.nan_to_num_(nan=0.0, posinf=0.0, neginf=0.0)
+                    if self.cfg.grad_clip > 0:
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.grad_clip)
+                    if self.cfg.detect_nan:
+                        self._log_nan_grads()
                     self.optimizer.step()
             self.global_step += 1
 
@@ -372,6 +391,19 @@ class Trainer:
             if self.training_iteration_end_callback is not None:
                 self.training_iteration_end_callback(self)
         return True
+
+    def _log_nan(self, name: str, t: torch.Tensor) -> None:
+        n = torch.isnan(t).sum().item()
+        if n > 0:
+            self.logger.info(f"[detect_nan] {name}: {n}/{t.numel()} NaN values, shape={tuple(t.shape)}, "
+                             f"min={t[~torch.isnan(t)].min().item():.4f}, max={t[~torch.isnan(t)].max().item():.4f}")
+
+    def _log_nan_grads(self) -> None:
+        for name, param in self.model.named_parameters():
+            if param.grad is not None:
+                n = torch.isnan(param.grad).sum().item()
+                if n > 0:
+                    self.logger.info(f"[detect_nan] grad/{name}: {n}/{param.grad.numel()} NaN values")
 
     @staticmethod
     def compute_sdf_grad_autodiff(points: torch.Tensor, pred_sdf: torch.Tensor):

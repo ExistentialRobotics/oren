@@ -143,8 +143,9 @@ class Criterion(nn.Module):
             loss += self.cfg.perturbation_loss_prior_weight * perturbation_loss_prior
             loss_dict["perturbation_loss_prior"] = perturbation_loss_prior.item()
 
-        grad_norm = torch.norm(pred_grad, dim=-1)
-        grad_norm_prior = torch.norm(pred_prior_grad, dim=-1)
+        # Safe norm: +eps under the sqrt prevents d‖0‖/d0 = 0/0 NaN in backward.
+        grad_norm = (pred_grad.pow(2).sum(dim=-1) + 1e-8).sqrt()
+        grad_norm_prior = (pred_prior_grad.pow(2).sum(dim=-1) + 1e-8).sqrt()
 
         if self.cfg.eikonal_loss_surface_weight > 0:
             eikonal_loss_surface = self.get_eikonal_loss_surface(grad_norm)
@@ -224,7 +225,9 @@ class Criterion(nn.Module):
         below_lower = torch.clamp(perturb_loss_lowerbound - pred_sdf_perturb, min=0)
 
         # Use exponential penalty for below lower bound to emphasize constraint
-        below_lower_loss = torch.exp(self.cfg.perturbation_loss_exp_penalty * below_lower) - 1
+        # Clamp before exp to prevent float32 overflow (exp overflows at ~88).
+        max_arg = 87.0 / max(self.cfg.perturbation_loss_exp_penalty, 1e-8)
+        below_lower_loss = torch.exp(self.cfg.perturbation_loss_exp_penalty * below_lower.clamp(max=max_arg)) - 1
         perturb_loss = above_upper_loss + below_lower_loss
 
         return _masked_mean(perturb_loss, self.mask_perturb)

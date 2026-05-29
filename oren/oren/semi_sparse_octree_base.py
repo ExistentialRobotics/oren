@@ -12,6 +12,7 @@ octree. The buffers store the octree structure:
 """
 
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from oren import torch
 from oren.ga_trilinear import ga_trilinear, trilinear_interpolation
@@ -166,12 +167,19 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
         # Implement the forward pass logic here
         assert voxel_indices.dtype == torch.long
 
+        # Points outside the octree have voxel_indices == -1.  Accessing index -1 in the
+        # zero-initialised buffers gives voxel_size = 0, which causes division-by-zero in
+        # ga_trilinear and produces NaN.  Clamp those indices to 0 and zero-out the
+        # results afterwards.
+        valid_mask = voxel_indices >= 0  # (n_points,)
+        safe_indices = voxel_indices.clamp(min=0)
+
         # find the voxel centers for each point
-        voxel_centers = self.voxel_centers[voxel_indices]  # (n_points, 3)
+        voxel_centers = self.voxel_centers[safe_indices]  # (n_points, 3)
         # find the vertex indices for each point
-        vertex_indices = self.vertex_indices[voxel_indices]  # (n_points, 8)
+        vertex_indices = self.vertex_indices[safe_indices]  # (n_points, 8)
         # find the voxel sizes for each point
-        voxel_sizes = self.voxels[voxel_indices, -1:]  # (n_points, 1)
+        voxel_sizes = self.voxels[safe_indices, -1:]  # (n_points, 1)
         # get the sdf priors and gradient priors for each vertex
         vertex_sdf_priors = self.sdf_priors[vertex_indices]  # (n_points, 8)
         vertex_grad_priors = self.grad_priors[vertex_indices]  # (n_points, 8, 3)
@@ -201,9 +209,10 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
                 for level in range(2, self.cfg.residual_num_levels + 1):
                     # level=1: leaf level
                     residual_voxel_indices = self.find_voxel_indices(points, False, level)
-                    residual_voxel_centers = self.voxel_centers[residual_voxel_indices]  # (n_points, 3)
-                    residual_vertex_indices = self.vertex_indices[residual_voxel_indices]  # (n_points, 8)
-                    residual_voxel_sizes = self.voxels[residual_voxel_indices, -1:]  # (n_points, 1)
+                    safe_residual_indices = residual_voxel_indices.clamp(min=0)
+                    residual_voxel_centers = self.voxel_centers[safe_residual_indices]  # (n_points, 3)
+                    residual_vertex_indices = self.vertex_indices[safe_residual_indices]  # (n_points, 8)
+                    residual_voxel_sizes = self.voxels[safe_residual_indices, -1:]  # (n_points, 1)
                     # (n_points, 3), normalized to [0, 1]
                     p = (points - residual_voxel_centers) / (residual_voxel_sizes * self.cfg.resolution) + 0.5
                     # (n_points, 8, residual_feature_dim)
@@ -217,6 +226,11 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
                 residual_features = torch.cat(residual_features, dim=-1)
         else:
             residual_features = None
+
+        # Zero out results for points that were outside the octree.
+        sdf_preds = sdf_preds * valid_mask
+        if residual_features is not None:
+            residual_features = residual_features * valid_mask.unsqueeze(-1)
 
         return voxel_indices, sdf_preds, residual_features
 

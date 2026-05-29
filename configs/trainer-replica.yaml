@@ -65,14 +65,14 @@ criterion:
     projection_loss_type: L1
     perturbation_loss_exp_penalty: 10.0
     heat_loss_weight: 0.0
-    heat_loss_lambda: 4.0
+    heat_loss_lambda: 4.00
     sign_loss_free_weight: 0.0
     sign_loss_occ_weight: 0.0
     sign_loss_temperature: 100.0
 num_init_frames: 3
 init_frame_iterations: 10
 num_iterations_per_frame: 1
-num_rays_total: 20480
+num_rays_total: 204800
 extra_surface_sample: false # not helpful
 frame_downsample: 100
 sample_rays:
@@ -83,7 +83,7 @@ sample_rays:
     depth_max: 10.0
     surface_margin: 0.09
     sigma_s: 0.03
-batch_size: 204800
+batch_size: 2048000
 lr: 0.005
 grad_method: finite_difference
 finite_difference_eps: 0.03

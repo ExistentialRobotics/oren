@@ -45,3 +45,5 @@ class TrainerConfig(ConfigABC):
     profiling: bool = False
     profiling_verbose: bool = False
     frozen_model_path: Optional[str] = None
+    detect_nan: bool = False  # enable anomaly detection + per-tensor NaN logging (slow)
+    grad_clip: float = 0.0  # gradient clipping max-norm; 0 disables
