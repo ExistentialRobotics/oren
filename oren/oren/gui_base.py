@@ -2082,16 +2082,23 @@ class GuiBase:
             n = len(key_frame_indices) * len(self.org_cam.points)
             if len(self.kf_cams.points) < n:  # need to add more cameras
                 existing_kf_count = len(self.kf_cams.points) // len(self.org_cam.points)
+                frame_index_to_seq = {fidx: i for i, fidx in enumerate(self.frame_indices)}
                 for idx in key_frame_indices[existing_kf_count:]:
-                    pose = self.frame_poses[idx]
+                    seq = frame_index_to_seq.get(idx)
+                    if seq is None:
+                        break  # frame not yet received by GUI
+                    pose = self.frame_poses[seq]
                     points = np.asarray(self.org_cam.points)
                     points = points @ pose[:3, :3].T + pose[:3, [3]].T
                     start_idx = len(self.kf_cams.points)
                     self.kf_cams.points.extend(o3d.utility.Vector3dVector(points.astype(np.float64)))
                     self.kf_cams.lines.extend(np.asarray(self.org_cam.lines) + start_idx)
             self.kf_cams.paint_uniform_color(np.array(self.cfg.camera_color_key_frame, dtype=np.float64))
+            n_cams_built = len(self.kf_cams.points) // len(self.org_cam.points)
+            m = len(self.org_cam.lines)
             for idx in selected_key_frame_indices:
-                m = len(self.org_cam.lines)
+                if idx >= n_cams_built:
+                    continue
                 for i in range(m * idx, m * (idx + 1)):
                     self.kf_cams.colors[i] = np.array(self.cfg.camera_color_selected_key_frame, dtype=np.float64)
 

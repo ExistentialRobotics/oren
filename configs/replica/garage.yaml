@@ -1,23 +1,24 @@
 base_config: ../trainer-replica.yaml
 exp_name: replica/garage
-bound_min: [-18.0, -20.0, -5.5]
-bound_max: [10.0, 0.0, 1.5]
+bound_min: [-19.0, -21.0, -6.5]
+bound_max: [11.0, 1.0, 1.5]
 data:
     dataset_args:
         data_path: "data/garage/replica"
         min_depth: 0.3
         max_depth: 20.0
-frame_downsample: 10
+frame_downsample: 2
 key_frame_set:
-    insert_interval: 20
+    insert_interval: 5
     selection_window_size: 8
 model:
     octree_cfg:
-        resolution: 0.10
-        tree_depth: 9
+        resolution: 0.4
+        tree_depth: 8
         semi_sparse_depth: 5
-        init_voxel_num: 1200000
-        insertion_threshold: 20
+        init_voxel_num: 1000000
+        insertion_threshold: 30
+num_rays_total: 10480
 sample_rays:
     depth_min: 0.3
     depth_max: 20.0
@@ -26,6 +27,5 @@ sample_rays:
 criterion:
     perturbation_loss_exp_penalty: 10.0
 grad_clip: 0   # clip gradient norm; set to 0 to disable
-batch_size: 20480000
 #detect_nan: true  # uncomment to enable slow but detailed NaN tracing
-mesh_resolution: 0.05
+mesh_resolution: 0.1

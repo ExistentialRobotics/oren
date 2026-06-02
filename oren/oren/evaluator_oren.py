@@ -80,8 +80,8 @@ class OrenEvaluator(EvaluatorBase):
         get_grad: bool,
         auto_grad: bool = True,
         finite_diff_eps: float = 0.01,
-        prior_only: bool = False,
         device: str = None,
+        prior_only: bool = False,
     ) -> Dict[str, torch.Tensor]:
         """
         Forward the model with the given points.

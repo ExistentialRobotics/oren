@@ -139,17 +139,23 @@ class GuiTrainer:
             return None
         packet: Optional[GuiControlPacket] = None
         save_model_to_path = None
+        gui_closed = False
         while True and not self.queue_from_gui.empty():
             try:
                 packet = self.queue_from_gui.get_nowait()
+                if packet.flag_gui_closed:
+                    gui_closed = True
                 if packet.save_model_to_path is not None and len(packet.save_model_to_path) > 0:
                     save_model_to_path = packet.save_model_to_path
                 if not get_latest:
                     break
             except queue.Empty:
                 break
-        if packet is not None and save_model_to_path is not None:
-            packet.save_model_to_path = save_model_to_path
+        if packet is not None:
+            if save_model_to_path is not None:
+                packet.save_model_to_path = save_model_to_path
+            if gui_closed:
+                packet.flag_gui_closed = True
         return packet
 
     def reply_gui(self, data_packet: Optional[GuiDataPacket] = None, must_reply: bool = False):

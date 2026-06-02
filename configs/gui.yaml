@@ -51,9 +51,9 @@ sdf_slice_axis: 2
 sdf_slice_position: -1.0
 sdf_color_map: jet
 
-experiment_name: oren
-scene_bound_min: [-80.0, -80.0, -80.0]
-scene_bound_max: [80.0, 80.0, 80.0]
+experiment_name: replica/garage
+scene_bound_min: [-18.0, -20.0, -10.5]
+scene_bound_max: [10.0, 0.0, 1.5]
 gt_mesh_path:
 
 mesh_remove_ceiling: true

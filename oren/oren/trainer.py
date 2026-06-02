@@ -42,7 +42,7 @@ class Trainer:
         # set the bound automatically from the dataset if available.
         # the bound is used for evaluation and mesh extraction.
         # the training does not rely on the bound.
-        if self.data_stream.bound_min is not None and self.data_stream.bound_max is not None:
+        if self.cfg.bound_min is None and self.data_stream.bound_min is not None and self.data_stream.bound_max is not None:
             self.cfg.bound_min = (self.data_stream.bound_min - 0.1).cpu().tolist()
             self.cfg.bound_max = (self.data_stream.bound_max + 0.1).cpu().tolist()
 
