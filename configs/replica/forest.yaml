@@ -1,26 +1,28 @@
 base_config: ../trainer-replica.yaml
 exp_name: replica/forest
 # Camera trajectory: x=[50,107], y=[82,124], z=[31,33]; 25m margin for max_depth=20m
-bound_min: [17.0, 47.0, 20.0]
-bound_max: [142.0, 161.0, 64.50]
+bound_min: [17.0, 47.0, 25.0] #20.0]
+bound_max: [142.0, 161.0, 55.0] #64.50]
 data:
     dataset_args:
         data_path: "data/forest/replica"
-        min_depth: 0.3
-        max_depth: 20.0
-frame_downsample: 10
+        min_depth: 0.2
+        max_depth: 10.0
+frame_downsample: 5
 key_frame_set:
-    insert_interval: 20
+    insert_interval: 10
     selection_window_size: 8
 model:
     octree_cfg:
-        resolution: 0.3
+        resolution: 0.4
         tree_depth: 10
         semi_sparse_depth: 5
         init_voxel_num: 15000000
+        insertion_threshold: 40
+num_rays_total: 10480
 sample_rays:
-    depth_min: 0.3
-    depth_max: 20.0
+    depth_min: 0.2
+    depth_max: 10.0
     sigma_s: 0.03
     surface_margin: 0.09
 criterion:

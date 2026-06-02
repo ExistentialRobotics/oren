@@ -83,6 +83,12 @@ cd deps/erl_geometry
 pip install --no-build-isolation --verbose .
 cd ../..
 ```
+### 5. Install Oren
+```bash
+cd oren
+pip install -e .
+cd ..
+```
 
 > **Arch Linux note.** When building `pytorch3d` and `erl_geometry`, you may need to pin
 > the toolchain to CUDA-compatible version, e.g. `gcc-14` / `g++-14`:

@@ -6,22 +6,22 @@ data:
     dataset_args:
         data_path: "data/garage/replica"
         min_depth: 0.3
-        max_depth: 20.0
-frame_downsample: 2
+        max_depth: 8.0
+frame_downsample: 4
 key_frame_set:
     insert_interval: 5
     selection_window_size: 8
 model:
     octree_cfg:
-        resolution: 0.4
-        tree_depth: 8
+        resolution: 0.2
+        tree_depth: 9
         semi_sparse_depth: 5
         init_voxel_num: 1000000
         insertion_threshold: 30
 num_rays_total: 10480
 sample_rays:
     depth_min: 0.3
-    depth_max: 20.0
+    depth_max: 8.0
     sigma_s: 0.03
     surface_margin: 0.09
 criterion:

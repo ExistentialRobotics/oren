@@ -1104,7 +1104,7 @@ class GuiBase:
         mesh_resolution_line = o3d_gui.Horiz(spacing=sp)
         mesh_resolution_line.add_child(o3d_gui.Label("Mesh Resolution (#voxels per meter):"))
         self.slider_mesh_resolution = o3d_gui.Slider(o3d_gui.Slider.INT)
-        self.slider_mesh_resolution.set_limits(10, 110)
+        self.slider_mesh_resolution.set_limits(1, 110)
         self.slider_mesh_resolution.int_value = self.cfg.mesh_resolution
         mesh_resolution_line.add_child(self.slider_mesh_resolution)
 
