@@ -44,10 +44,14 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
         self.ever_inserted = False
 
         n = self.cfg.init_voxel_num
-        self.register_buffer("voxels", torch.zeros((n, 4), dtype=torch.float32))
+        # int64 (not int32) so insert_voxels can copy_ the sso tensors in-place
+        # without a dtype change; vertex_indices/structure are used as gather
+        # indices, which want int64 anyway. Stable dtypes + in-place updates keep
+        # these buffers at fixed addresses for CUDA-graph capture of the step.
+        self.register_buffer("voxels", torch.zeros((n, 4), dtype=torch.int64))
         self.register_buffer("voxel_centers", torch.zeros((n, 3), dtype=torch.float32))
-        self.register_buffer("vertex_indices", torch.zeros((n, 8), dtype=torch.int32))
-        self.register_buffer("structure", torch.zeros((n, 8), dtype=torch.int32))
+        self.register_buffer("vertex_indices", torch.zeros((n, 8), dtype=torch.int64))
+        self.register_buffer("structure", torch.zeros((n, 8), dtype=torch.int64))
 
         self.voxels: torch.Tensor  # (N, 4) [x, y, z, voxel_size]
         self.voxel_centers: torch.Tensor  # (N, 3) in meter
@@ -97,7 +101,12 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
             voxel_indices = self.find_voxel_indices(voxels_unique.to(device), True, level=1)  # (n_unique,)
             voxel_sizes = self.get_voxel_discrete_size(voxel_indices)  # (n_unique,)
             mask = voxel_sizes != 1  # only insert voxels that do not exist at size 1
-            voxel_indices[mask] = self.insert_voxels(voxels_unique[mask]).to(device)
+            # Skip the CPU insert + full GPU re-upload of the voxel structure when
+            # this frame adds no new voxels (common once the map fills in).
+            # insert_voxels' cost scales with total map size, not with #new voxels,
+            # so this avoids paying it on no-op frames.
+            if mask.any():
+                voxel_indices[mask] = self.insert_voxels(voxels_unique[mask]).to(device)
         else:
             voxel_indices = self.insert_voxels(voxels_unique)
         return voxels_unique, voxel_indices.cpu()

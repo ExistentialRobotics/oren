@@ -1,5 +1,7 @@
+import json
 import os
 import random
+import time
 from typing import Callable, Optional
 
 import torch as _torch  # used only for anomaly detection setup
@@ -29,6 +31,11 @@ class Trainer:
         self.cfg = cfg
 
         self.setup_seed(self.cfg.seed)
+
+        # TF32 tensor cores for float32 matmuls when set to "high" (faster; small
+        # precision loss). Default "highest" keeps full fp32.
+        torch.set_float32_matmul_precision(
+            getattr(self.cfg, "float32_matmul_precision", "highest"))
 
         if data_stream is None:
             self.data_stream = get_dataset(cfg.data.dataset_name, cfg.data.dataset_args)
@@ -63,13 +70,44 @@ class Trainer:
         )
         self.model = SdfNetwork(self.cfg.model)
         self.model.to(self.cfg.device)
+        if getattr(self.cfg, "compile_model", False):
+            try:
+                self.model = torch.compile(self.model, mode=self.cfg.compile_mode)
+                print(f"[Trainer] torch.compile enabled (mode={self.cfg.compile_mode})",
+                      flush=True)
+            except Exception as exc:  # noqa: BLE001 — fall back to eager
+                print(f"[Trainer] torch.compile unavailable, using eager: {exc}",
+                      flush=True)
 
         self.logger = BasicLogger(cfg.log_dir, cfg.exp_name, cfg.as_dict())
+
+        # Per-frame timing log (mapping-speed figure). Opened lazily-free here so
+        # a row is appended per processed frame; closed in _finalize_timing_logs().
+        self._frame_timing_fh = None
+        self._map_start_t: Optional[float] = None
+        if self.cfg.log_frame_timing:
+            path = os.path.join(self.logger.log_dir, "frame_timing.csv")
+            self._frame_timing_fh = open(path, "w")
+            self._frame_timing_fh.write(
+                "frame_id,wall_t_s,frame_dt_ms,n_iter,is_key_frame,n_voxels\n")
+            self.logger.info(f"Frame timing -> {path}")
 
         self.epoch = 0
         self.global_step = 0
         self.num_iterations = 0
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.cfg.lr)
+        # fused=True collapses the whole Adam update into a single CUDA kernel.
+        # The model is tiny, so the per-step launch overhead of the default
+        # (multi-kernel) path dominates on this launch-bound workload.
+        # capturable=True is required so optimizer.step() can run inside a CUDA
+        # graph (cuda_graph_training); it's a no-op cost otherwise.
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=self.cfg.lr, fused=True,
+            capturable=getattr(self.cfg, "cuda_graph_training", False),
+        )
+        # Lazily-built CUDA graph of the training step + its static I/O buffers.
+        self._cuda_graph = None
+        self._graph_buffers = None
+        self._graph_loss = None
         self.criterion = Criterion(
             cfg=self.cfg.criterion,
             n_stratified=self.cfg.sample_rays.n_stratified,
@@ -83,20 +121,25 @@ class Trainer:
 
         timer_on = self.cfg.profiling
         verbose = self.cfg.profiling_verbose
-        self.timer_octree_insert = GpuTimer("octree insert", enable=timer_on, verbose=verbose)
-        self.timer_key_frame_set_update = GpuTimer("key frame set update", enable=timer_on, verbose=verbose)
-        self.timer_train_frame = GpuTimer("train with frame", enable=timer_on, verbose=verbose)
-        self.timer_select_key_frames = GpuTimer("select key frames", enable=timer_on, verbose=verbose)
-        self.timer_sample_rays = GpuTimer("sample rays", enable=timer_on, verbose=verbose)
-        self.timer_generate_sdf_samples = GpuTimer("generate sdf samples", enable=timer_on, verbose=verbose)
-        self.timer_compute_offset_points = GpuTimer("compute offset points", enable=timer_on, verbose=verbose)
-        self.timer_find_voxel_indices_offset_points = GpuTimer(
-            "find voxel indices for offset points", enable=timer_on, verbose=verbose
-        )
-        self.timer_find_voxel_indices_sampled_xyz = GpuTimer(
-            "find voxel indices for sampled_xyz", enable=timer_on, verbose=verbose
-        )
-        self.timer_training_iteration = GpuTimer("training iteration", enable=timer_on, verbose=verbose)
+        # profiling_sync=False -> per-stage CPU dispatch time, no cuda.synchronize
+        # (no GPU drains). Use it to attribute wall time on this dispatch-bound
+        # workload at ~production speed; profiling_sync=True gives accurate GPU
+        # per-stage times but forces ~10 syncs/frame.
+        sync = getattr(self.cfg, "profiling_sync", True)
+
+        def _mk(name):
+            return GpuTimer(name, enable=timer_on, verbose=verbose, use_cuda_sync=sync)
+
+        self.timer_octree_insert = _mk("octree insert")
+        self.timer_key_frame_set_update = _mk("key frame set update")
+        self.timer_train_frame = _mk("train with frame")
+        self.timer_select_key_frames = _mk("select key frames")
+        self.timer_sample_rays = _mk("sample rays")
+        self.timer_generate_sdf_samples = _mk("generate sdf samples")
+        self.timer_compute_offset_points = _mk("compute offset points")
+        self.timer_find_voxel_indices_offset_points = _mk("find voxel indices for offset points")
+        self.timer_find_voxel_indices_sampled_xyz = _mk("find voxel indices for sampled_xyz")
+        self.timer_training_iteration = _mk("training iteration")
 
         self.training_iteration_end_callback: Callable[[Trainer], None] = None  # type: ignore
         self.training_frame_start_callback: Callable[[Trainer, Frame], bool] = None  # type: ignore
@@ -131,6 +174,7 @@ class Trainer:
             for _ in range(self.cfg.final_iterations):
                 self.train_with_frame(None)
 
+            self._finalize_timing_logs()
             self.logger.info("Training completed.")
             if self.training_end_callback is not None:
                 self.training_end_callback(self)
@@ -184,6 +228,7 @@ class Trainer:
 
     def _step_one_frame(self, frame: Frame, frame_id: int) -> bool:
         """Run insertion + key-frame update + training for one frame. Returns False if interrupted by callback."""
+        t_frame_start = time.perf_counter()
         points = frame.get_points(to_world_frame=True, device=self.cfg.device)
 
         with self.timer_octree_insert:
@@ -200,9 +245,55 @@ class Trainer:
                 return False
         self.epoch += 1
 
+        self._log_frame_timing(frame_id, t_frame_start, is_key_frame)
+
         if self.cfg.ckpt_interval > 0 and self.epoch % self.cfg.ckpt_interval == 0:
             self.save_model(f"epoch_{self.epoch:04d}.pth")
         return True
+
+    def _log_frame_timing(self, frame_id: int, t_start: float, is_key_frame: bool) -> None:
+        """Append one row to frame_timing.csv: end-to-end frame duration, wall
+        clock since the first frame, and cumulative occupied-voxel count."""
+        if self._frame_timing_fh is None:
+            return
+        now = time.perf_counter()
+        if self._map_start_t is None:
+            self._map_start_t = t_start
+        dt_ms = (now - t_start) * 1e3
+        wall_s = now - self._map_start_t
+        try:
+            # True octree fill = nodes actually stored in the voxel buffer. NOTE:
+            # octree.voxels.shape[0] is the *capacity* (== init_voxel_num), so it
+            # logged a constant. number_of_nodes is the live count of used rows,
+            # i.e. exactly what init_voxel_num caps — use it to size init_voxel_num
+            # (leave headroom; overflow at number_of_nodes == init_voxel_num).
+            n_voxels = int(self.model.octree.sso.number_of_nodes)
+        except Exception:
+            n_voxels = -1
+        self._frame_timing_fh.write(
+            f"{frame_id},{wall_s:.6f},{dt_ms:.3f},{self.num_iterations},"
+            f"{int(is_key_frame)},{n_voxels}\n"
+        )
+        self._frame_timing_fh.flush()
+
+    def _finalize_timing_logs(self) -> None:
+        """Close the per-frame CSV and, if profiling, dump per-stage averages."""
+        if self._frame_timing_fh is not None:
+            try:
+                self._frame_timing_fh.close()
+            except Exception:
+                pass
+            self._frame_timing_fh = None
+        if self.cfg.profiling:
+            stats = self.get_time_stats()
+            stats["num_frames"] = self.epoch
+            try:
+                path = os.path.join(self.logger.log_dir, "stage_timing.json")
+                with open(path, "w") as fh:
+                    json.dump(stats, fh, indent=2)
+                self.logger.info(f"Stage timing -> {path}")
+            except Exception as exc:
+                self.logger.info(f"Failed to write stage timing: {exc}")
 
     def fetch_one_frame(self) -> Optional[Frame]:
         frame = None
@@ -315,6 +406,18 @@ class Trainer:
 
         bs = int(self.cfg.batch_size / self.samples.sampled_xyz.shape[1])
 
+        if self.cfg.cuda_graph_training and self.cfg.grad_method != "autodiff":
+            self._train_iterations_graphed(
+                num_rays,
+                voxel_indices,
+                offset_points_plus,
+                offset_points_minus,
+                voxel_indices_plus,
+                voxel_indices_minus,
+                mask,
+            )
+            return True
+
         for _ in range(self.num_iterations):
             self.model.train()
             with self.timer_training_iteration:
@@ -384,13 +487,127 @@ class Trainer:
                     self.optimizer.step()
             self.global_step += 1
 
-            self.logger.info(f"loss_dict: {self.loss_dict}")
-            for k, v in self.loss_dict.items():
-                self.logger.tb.add_scalar(f"loss/{k}", v, self.global_step)
+            # Per-iteration loss logging forces a host sync + TensorBoard disk I/O
+            # every frame. Gate it behind log_loss_interval (0 = off) so it doesn't
+            # cost throughput during streaming map builds.
+            if (self.cfg.log_loss_interval > 0
+                    and self.global_step % self.cfg.log_loss_interval == 0):
+                self.logger.info(f"loss_dict: {self.loss_dict}")
+                for k, v in self.loss_dict.items():
+                    self.logger.tb.add_scalar(f"loss/{k}", v, self.global_step)
 
             if self.training_iteration_end_callback is not None:
                 self.training_iteration_end_callback(self)
         return True
+
+    def _train_iterations_graphed(
+        self,
+        num_rays,
+        voxel_indices,
+        offset_points_plus,
+        offset_points_minus,
+        voxel_indices_plus,
+        voxel_indices_minus,
+        mask,
+    ):
+        """Run the training step via a captured CUDA graph (finite-difference only).
+
+        The per-frame valid-ray count varies, so the frame's tensors are copied
+        into fixed-shape static buffers (padded to num_rays_total; the tail is
+        marked invalid via voxel_indices=-1 + valid_mask=False, which the octree
+        forward and criterion already zero/exclude). The forward + FD gradient +
+        criterion + backward + optimizer.step are captured once and replayed,
+        collapsing ~400 per-iteration dispatches into a single launch. Falls back
+        to eager (permanently, this run) if capture fails.
+        """
+        self.model.train()
+        eps = self.cfg.finite_difference_eps
+        R = self.cfg.num_rays_total
+        m = self.samples.sampled_xyz.shape[1]
+        V = min(int(num_rays), R)
+
+        if self._graph_buffers is None:
+            dev = self.cfg.device
+            self._graph_buffers = {
+                "xyz": torch.zeros(R, m, 3, device=dev),
+                "vi": torch.full((R, m), -1, dtype=torch.long, device=dev),
+                "op": torch.zeros(R, m, 3, 3, device=dev),
+                "om": torch.zeros(R, m, 3, 3, device=dev),
+                "vip": torch.full((R, m, 3), -1, dtype=torch.long, device=dev),
+                "vim": torch.full((R, m, 3), -1, dtype=torch.long, device=dev),
+                "gtp": torch.zeros(R, self.cfg.sample_rays.n_perturbed, device=dev),
+                "gts": torch.zeros(R, self.cfg.sample_rays.n_stratified, device=dev),
+                "pm": torch.zeros(R, self.cfg.sample_rays.n_perturbed, dtype=torch.bool, device=dev),
+                "mask": torch.zeros(R, m, dtype=torch.bool, device=dev),
+            }
+        b = self._graph_buffers
+
+        # Copy this frame's valid rows in; reset the padded tail to "invalid".
+        b["vi"].fill_(-1); b["vip"].fill_(-1); b["vim"].fill_(-1); b["mask"].zero_()
+        b["xyz"][:V].copy_(self.samples.sampled_xyz[:V])
+        b["vi"][:V].copy_(voxel_indices[:V])
+        b["op"][:V].copy_(offset_points_plus[:V])
+        b["om"][:V].copy_(offset_points_minus[:V])
+        b["vip"][:V].copy_(voxel_indices_plus[:V])
+        b["vim"][:V].copy_(voxel_indices_minus[:V])
+        b["gtp"][:V].copy_(self.samples.perturbation_sdf[:V])
+        b["gts"][:V].copy_(self.samples.stratified_sdf[:V])
+        b["pm"][:V].copy_(self.samples.positive_perturbation_mask[:V])
+        b["mask"][:V].copy_(mask[:V])
+
+        def _step():
+            self.optimizer.zero_grad(set_to_none=False)
+            with torch.enable_grad():
+                _, sp, _, spred = self.model(b["xyz"], b["vi"])
+                _, spp, _, splus = self.model(b["op"], b["vip"])
+                _, spm, _, sminus = self.model(b["om"], b["vim"])
+                grad = (splus - sminus) / (2 * eps)
+                prior_grad = (spp - spm) / (2 * eps)
+                loss, _ = self.criterion(
+                    pred_sdf=spred, pred_prior=sp,
+                    pred_grad=grad, pred_prior_grad=prior_grad,
+                    gt_sdf_perturb=b["gtp"], gt_sdf_stratified=b["gts"],
+                    positive_perturbation_mask=b["pm"],
+                    perturb_eta=self.cfg.sample_rays.sigma_s,
+                    valid_mask=b["mask"],
+                )
+                loss.backward()
+                self.optimizer.step()
+            return loss
+
+        if self._cuda_graph is None:
+            try:
+                stream = torch.cuda.Stream()
+                stream.wait_stream(torch.cuda.current_stream())
+                with torch.cuda.stream(stream):
+                    for _ in range(3):
+                        _step()
+                torch.cuda.current_stream().wait_stream(stream)
+                self._cuda_graph = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(self._cuda_graph):
+                    self._graph_loss = _step()
+                self.logger.info("cuda_graph_training: training step captured.")
+            except Exception as exc:
+                self.logger.info(
+                    f"cuda_graph_training: capture failed ({exc}); falling back to eager."
+                )
+                self.cfg.cuda_graph_training = False
+                self._cuda_graph = None
+                for _ in range(self.num_iterations):
+                    _step()
+                    self.global_step += 1
+                return
+
+        with self.timer_training_iteration:
+            for _ in range(self.num_iterations):
+                self._cuda_graph.replay()
+                self.global_step += 1
+                if (self.cfg.log_loss_interval > 0
+                        and self.global_step % self.cfg.log_loss_interval == 0):
+                    self.logger.info(f"loss(total): {self._graph_loss.item():.4f}")
+                if self.training_iteration_end_callback is not None:
+                    self.training_iteration_end_callback(self)
+        self.loss_dict = {"total_loss": self._graph_loss}
 
     def _log_nan(self, name: str, t: torch.Tensor) -> None:
         n = torch.isnan(t).sum().item()
@@ -545,6 +762,10 @@ class Trainer:
             "find_voxel_indices_offset_points": self.timer_find_voxel_indices_offset_points.average_t,
             "find_voxel_indices_sampled_xyz": self.timer_find_voxel_indices_sampled_xyz.average_t,
             "training_iteration": self.timer_training_iteration.average_t,
+            # True => GPU per-stage times (cuda.synchronize); False => per-stage
+            # CPU dispatch times (perf_counter, no GPU drains). The columns mean
+            # different things depending on this flag, so record it.
+            "cuda_sync": getattr(self.cfg, "profiling_sync", True),
         }
         return time_stats
 

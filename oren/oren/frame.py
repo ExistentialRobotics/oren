@@ -209,7 +209,7 @@ class DepthFrame(Frame):
         if len(indices) <= num_points:
             sampled_indices = indices
         else:
-            perm = torch.randperm(len(indices))[:num_points]
+            perm = torch.randperm(len(indices), device=indices.device)[:num_points]
             sampled_indices = indices[perm]
         points = self.points[sampled_indices[:, 0], sampled_indices[:, 1]]
         if device is not None:
@@ -293,7 +293,7 @@ class LiDARFrame:
         if len(indices) <= num_points:
             sampled_indices = indices
         else:
-            perm = torch.randperm(len(indices))[:num_points]
+            perm = torch.randperm(len(indices), device=indices.device)[:num_points]
             sampled_indices = indices[perm]
         points = self.points[sampled_indices]
         if device is not None:

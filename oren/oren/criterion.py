@@ -114,15 +114,18 @@ class Criterion(nn.Module):
             self.mask_strat = None
 
         loss = 0
+        # loss_dict holds DETACHED tensors, not .item() floats: .item() forces a
+        # GPU->CPU sync per term every iteration, stalling the GPU (low utilisation)
+        # even when the values are never logged. Consumers convert lazily.
         loss_dict = {}
         if self.cfg.boundary_loss_weight > 0:
             boundary_loss = self.get_boundary_loss(pred_sdf)
             loss += self.cfg.boundary_loss_weight * boundary_loss
-            loss_dict["boundary_loss"] = boundary_loss.item()
+            loss_dict["boundary_loss"] = boundary_loss.detach()
         if self.cfg.boundary_loss_prior_weight > 0:
             boundary_loss_prior = self.get_boundary_loss(pred_prior)
             loss += self.cfg.boundary_loss_prior_weight * boundary_loss_prior
-            loss_dict["boundary_loss_prior"] = boundary_loss_prior.item()
+            loss_dict["boundary_loss_prior"] = boundary_loss_prior.detach()
 
         if self.cfg.perturbation_loss_weight > 0:
             perturbation_loss = self.get_perturbation_loss(
@@ -132,7 +135,7 @@ class Criterion(nn.Module):
                 perturb_eta,
             )
             loss += self.cfg.perturbation_loss_weight * perturbation_loss
-            loss_dict["perturbation_loss"] = perturbation_loss.item()
+            loss_dict["perturbation_loss"] = perturbation_loss.detach()
         if self.cfg.perturbation_loss_prior_weight > 0:
             perturbation_loss_prior = self.get_perturbation_loss(
                 pred_prior[:, self.n_stratified : self.n_stratified + self.n_perturbed],
@@ -141,7 +144,7 @@ class Criterion(nn.Module):
                 perturb_eta,
             )
             loss += self.cfg.perturbation_loss_prior_weight * perturbation_loss_prior
-            loss_dict["perturbation_loss_prior"] = perturbation_loss_prior.item()
+            loss_dict["perturbation_loss_prior"] = perturbation_loss_prior.detach()
 
         # Safe norm: +eps under the sqrt prevents d‖0‖/d0 = 0/0 NaN in backward.
         grad_norm = (pred_grad.pow(2).sum(dim=-1) + 1e-8).sqrt()
@@ -150,27 +153,27 @@ class Criterion(nn.Module):
         if self.cfg.eikonal_loss_surface_weight > 0:
             eikonal_loss_surface = self.get_eikonal_loss_surface(grad_norm)
             loss += self.cfg.eikonal_loss_surface_weight * eikonal_loss_surface
-            loss_dict["eikonal_loss_surface"] = eikonal_loss_surface.item()
+            loss_dict["eikonal_loss_surface"] = eikonal_loss_surface.detach()
         if self.cfg.eikonal_loss_surface_prior_weight > 0:
             eikonal_loss_surface_prior = self.get_eikonal_loss_surface(grad_norm_prior)
             loss += self.cfg.eikonal_loss_surface_prior_weight * eikonal_loss_surface_prior
-            loss_dict["eikonal_loss_surface_prior"] = eikonal_loss_surface_prior.item()
+            loss_dict["eikonal_loss_surface_prior"] = eikonal_loss_surface_prior.detach()
         if self.cfg.eikonal_loss_perturbation_weight > 0:
             eikonal_loss_perturbation = self.get_eikonal_loss_perturbation(grad_norm)
             loss += self.cfg.eikonal_loss_perturbation_weight * eikonal_loss_perturbation
-            loss_dict["eikonal_loss_perturbation"] = eikonal_loss_perturbation.item()
+            loss_dict["eikonal_loss_perturbation"] = eikonal_loss_perturbation.detach()
         if self.cfg.eikonal_loss_perturbation_prior_weight > 0:
             eikonal_loss_perturbation_prior = self.get_eikonal_loss_perturbation(grad_norm_prior)
             loss += self.cfg.eikonal_loss_perturbation_prior_weight * eikonal_loss_perturbation_prior
-            loss_dict["eikonal_loss_perturbation_prior"] = eikonal_loss_perturbation_prior.item()
+            loss_dict["eikonal_loss_perturbation_prior"] = eikonal_loss_perturbation_prior.detach()
         if self.cfg.eikonal_loss_space_weight > 0:
             eikonal_loss_space = self.get_eikonal_loss_space(grad_norm)
             loss += self.cfg.eikonal_loss_space_weight * eikonal_loss_space
-            loss_dict["eikonal_loss_space"] = eikonal_loss_space.item()
+            loss_dict["eikonal_loss_space"] = eikonal_loss_space.detach()
         if self.cfg.eikonal_loss_space_prior_weight > 0:
             eikonal_loss_space_prior = self.get_eikonal_loss_space(grad_norm_prior)
             loss += self.cfg.eikonal_loss_space_prior_weight * eikonal_loss_space_prior
-            loss_dict["eikonal_loss_space_prior"] = eikonal_loss_space_prior.item()
+            loss_dict["eikonal_loss_space_prior"] = eikonal_loss_space_prior.detach()
 
         if self.cfg.projection_loss_weight > 0:
             projection_loss = self.get_projection_loss(
@@ -178,7 +181,7 @@ class Criterion(nn.Module):
                 gt_sdf_stratified,
             )
             loss += self.cfg.projection_loss_weight * projection_loss
-            loss_dict["projection_loss"] = projection_loss.item()
+            loss_dict["projection_loss"] = projection_loss.detach()
 
         if self.cfg.projection_loss_prior_weight > 0:
             projection_loss_prior = self.get_projection_loss(
@@ -186,16 +189,16 @@ class Criterion(nn.Module):
                 gt_sdf_stratified,
             )
             loss += self.cfg.projection_loss_prior_weight * projection_loss_prior
-            loss_dict["projection_loss_prior"] = projection_loss_prior.item()
+            loss_dict["projection_loss_prior"] = projection_loss_prior.detach()
 
         if self.cfg.heat_loss_weight > 0:
             if grad_norm is None:
                 grad_norm = torch.norm(pred_grad, dim=-1)
             heat_loss = self.get_heat_loss(pred_sdf, grad_norm)
             loss += self.cfg.heat_loss_weight * heat_loss
-            loss_dict["heat_loss"] = heat_loss.item()
+            loss_dict["heat_loss"] = heat_loss.detach()
 
-        loss_dict["total_loss"] = loss.item()
+        loss_dict["total_loss"] = loss.detach()
         return loss, loss_dict
 
     def get_boundary_loss(self, pred_sdf: torch.Tensor):
@@ -210,13 +213,13 @@ class Criterion(nn.Module):
         gt_sdf_perturb: torch.Tensor,
         perturb_eta: float,
     ):
-        # Clone to avoid modifying input tensors
-        pred_sdf_perturb = pred_sdf_perturb.clone()
-        gt_sdf_perturb = gt_sdf_perturb.clone()
-
-        # Flip sign for positive perturbations (negative SDF values) to unify loss calculation
-        pred_sdf_perturb[positive_perturbation_mask] = -pred_sdf_perturb[positive_perturbation_mask]
-        gt_sdf_perturb[positive_perturbation_mask] = -gt_sdf_perturb[positive_perturbation_mask]
+        # Flip sign for positive perturbations (negative SDF) to unify the loss.
+        # Multiplicative sign rather than boolean-mask assignment so there is no
+        # data-dependent nonzero() — required for CUDA-graph capture. Equivalent:
+        #   x[mask] = -x[mask]   <=>   x * where(mask, -1, 1)
+        sign = torch.where(positive_perturbation_mask, -1.0, 1.0)
+        pred_sdf_perturb = pred_sdf_perturb * sign
+        gt_sdf_perturb = gt_sdf_perturb * sign
 
         perturb_loss_upperbound = gt_sdf_perturb
         perturb_loss_lowerbound = perturb_eta * 1.0 * torch.ones_like(gt_sdf_perturb)

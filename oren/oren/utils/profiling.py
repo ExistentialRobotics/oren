@@ -50,11 +50,18 @@ def cpu_timer(message, warmup=0, enable=True, verbose=True):
 
 class GpuTimer:
 
-    def __init__(self, message, warmup: int = 0, enable: bool = True, verbose: bool = True):
+    def __init__(self, message, warmup: int = 0, enable: bool = True, verbose: bool = True,
+                 use_cuda_sync: bool = True):
         self.message = message
         self.warmup = warmup
         self.enable = enable
         self.verbose = verbose
+        # use_cuda_sync=False -> measure CPU wall time with perf_counter and skip
+        # torch.cuda.synchronize(). On this launch/dispatch-bound workload that
+        # captures per-stage CPU dispatch cost WITHOUT draining the GPU pipeline
+        # (the accurate-GPU path forces ~10 syncs/frame), so it's cheap enough to
+        # leave on to see where wall time actually goes.
+        self.use_cuda_sync = use_cuda_sync
         self.cnt = 0
         self.t = 0
         self.average_t = 0
@@ -64,17 +71,23 @@ class GpuTimer:
     def __enter__(self):
         if not self.enable:
             return self
-        self.start = torch.cuda.Event(enable_timing=True)
-        self.end = torch.cuda.Event(enable_timing=True)
-        self.start.record()
+        if self.use_cuda_sync:
+            self.start = torch.cuda.Event(enable_timing=True)
+            self.end = torch.cuda.Event(enable_timing=True)
+            self.start.record()
+        else:
+            self.start = time.perf_counter()
         return self
 
     def __exit__(self, *args):
         if not self.enable:
             return
-        self.end.record()
-        torch.cuda.synchronize()
-        self.t = self.start.elapsed_time(self.end) / 1e3
+        if self.use_cuda_sync:
+            self.end.record()
+            torch.cuda.synchronize()
+            self.t = self.start.elapsed_time(self.end) / 1e3
+        else:
+            self.t = time.perf_counter() - self.start
         if self.cnt < self.warmup:
             self.cnt += 1
             return

@@ -226,7 +226,11 @@ class KeyFrameSet:
                 valid_idx = self.valid_indices[i]
             else:
                 valid_idx = torch.nonzero(frame.get_valid_mask().view(-1))
-            sample_idx = valid_idx[torch.randint(0, valid_idx.shape[0], (n_frame_samples,))]
+            # randint must live on valid_idx's device (frames are now on the GPU)
+            # or the gather below hits a cross-device indexing error.
+            sample_idx = valid_idx[
+                torch.randint(0, valid_idx.shape[0], (n_frame_samples,), device=valid_idx.device)
+            ]
             sample_idx = sample_idx.view(-1)
 
             pose = frame.get_ref_pose()
