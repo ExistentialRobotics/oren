@@ -42,12 +42,15 @@ class SemiSparseOctree(SemiSparseOctreeBase):
         # Copy IN-PLACE into the pre-allocated capacity-sized buffers instead of
         # rebinding to new tensors. Fixed addresses are required for CUDA-graph
         # capture of the training step (its gather reads these buffers) — a
-        # replayed graph would otherwise read freed/stale memory. The sso tensors
-        # are the same capacity shape, so each copy_ is a straight overwrite.
-        self.voxels.copy_(self.sso.voxels_tensor.long())
-        self.voxel_centers.copy_(self.sso.voxel_centers_tensor)
-        self.vertex_indices.copy_(self.sso.vertices_tensor)
-        self.structure.copy_(self.sso.children_tensor)
+        # replayed graph would otherwise read freed/stale memory.
+        # Only the first number_of_nodes rows are live (all voxel_indices < n);
+        # copy just that prefix instead of the full capacity. Negligible for small
+        # init_voxel_num, but a large win when capacity >> live nodes (big envs).
+        n = self.sso.number_of_nodes
+        self.voxels[:n].copy_(self.sso.voxels_tensor[:n].long())
+        self.voxel_centers[:n].copy_(self.sso.voxel_centers_tensor[:n])
+        self.vertex_indices[:n].copy_(self.sso.vertices_tensor[:n])
+        self.structure[:n].copy_(self.sso.children_tensor[:n])
 
         return svo_idx
 

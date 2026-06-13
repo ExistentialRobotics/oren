@@ -91,9 +91,24 @@ class SemiSparseOctreeBase(torch.nn.Module, ABC):
             voxel_indices: (n_unique,) index of the voxel for each voxel, on CPU.
         """
         voxels = self.points_to_voxels(points)  # (n_points, 3) voxel coordinates
-        voxels_raw, counts = torch.unique(voxels, dim=0, return_inverse=False, return_counts=True)
-        voxels_valid = voxels_raw[counts > self.cfg.insertion_threshold]  # (n_valid, 3) of grid coordinates
-        voxels_unique = torch.unique(voxels_valid, dim=0)  # (n_unique, 3) of grid coordinates
+        # Count duplicate voxels via a 1-D key unique instead of torch.unique(dim=0),
+        # a lexicographic row-sort that profiling showed is ~84% of insert_points.
+        # Pack the 3 int coords into one int64 key (offset to non-negative so the
+        # packing is a bijection). The key is lexicographic in (x,y,z), so the sorted
+        # 1-D unique returns rows in the SAME order the dim=0 unique would — and the
+        # masked result is therefore bit-identical to the previous two-unique path.
+        if voxels.shape[0] == 0:
+            voxels_unique = voxels  # (0, 3); the numel()==0 guard below handles it
+        else:
+            vmin = voxels.min(dim=0).values
+            span = voxels.max(dim=0).values - vmin + 1  # per-axis extent (>= 1)
+            v = voxels - vmin
+            key = (v[:, 0] * span[1] + v[:, 1]) * span[2] + v[:, 2]  # (n_points,) int64
+            uniq_key, inv, counts = torch.unique(key, return_inverse=True, return_counts=True)
+            # Representative voxel row per unique key (all rows sharing a key are equal).
+            rep = voxels.new_empty((uniq_key.shape[0], 3))
+            rep[inv] = voxels
+            voxels_unique = rep[counts > self.cfg.insertion_threshold]  # (n_unique, 3) grid coords
         if voxels_unique.numel() == 0:
             return torch.empty((0,), dtype=torch.long, device="cpu"), torch.empty((0,), dtype=torch.long, device="cpu")
         if self.cfg.skip_insertion_if_exists and self.ever_inserted:

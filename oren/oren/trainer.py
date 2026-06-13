@@ -130,6 +130,7 @@ class Trainer:
         def _mk(name):
             return GpuTimer(name, enable=timer_on, verbose=verbose, use_cuda_sync=sync)
 
+        self.timer_get_points = _mk("get points")
         self.timer_octree_insert = _mk("octree insert")
         self.timer_key_frame_set_update = _mk("key frame set update")
         self.timer_train_frame = _mk("train with frame")
@@ -139,7 +140,36 @@ class Trainer:
         self.timer_compute_offset_points = _mk("compute offset points")
         self.timer_find_voxel_indices_offset_points = _mk("find voxel indices for offset points")
         self.timer_find_voxel_indices_sampled_xyz = _mk("find voxel indices for sampled_xyz")
+        self.timer_graph_input_copy = _mk("graph input copy")
         self.timer_training_iteration = _mk("training iteration")
+
+        # Ordered (name, timer) pairs for the per-frame stage CSV below. Each
+        # timer's `.t` holds its last call's elapsed time; all 12 fire every frame
+        # (finite-difference + cuda-graph path), so the row is never stale.
+        self._stage_timers = [
+            ("get_points", self.timer_get_points),
+            ("octree_insert", self.timer_octree_insert),
+            ("key_frame_set_update", self.timer_key_frame_set_update),
+            ("train_frame", self.timer_train_frame),
+            ("select_key_frames", self.timer_select_key_frames),
+            ("sample_rays", self.timer_sample_rays),
+            ("generate_sdf_samples", self.timer_generate_sdf_samples),
+            ("compute_offset_points", self.timer_compute_offset_points),
+            ("find_voxel_indices_offset_points", self.timer_find_voxel_indices_offset_points),
+            ("find_voxel_indices_sampled_xyz", self.timer_find_voxel_indices_sampled_xyz),
+            ("graph_input_copy", self.timer_graph_input_copy),
+            ("training_iteration", self.timer_training_iteration),
+        ]
+        # Per-frame stage timing -> medians (not tail-inflated like average_t) and
+        # tail attribution. Needs profiling=True so the GpuTimers are enabled.
+        self._stage_timing_fh = None
+        if self.cfg.log_frame_timing and self.cfg.profiling:
+            spath = os.path.join(self.logger.log_dir, "stage_timing_per_frame.csv")
+            self._stage_timing_fh = open(spath, "w")
+            self._stage_timing_fh.write(
+                "frame_id,frame_dt_ms,is_key_frame,"
+                + ",".join(n + "_ms" for n, _ in self._stage_timers) + "\n")
+            self.logger.info(f"Per-frame stage timing -> {spath}")
 
         self.training_iteration_end_callback: Callable[[Trainer], None] = None  # type: ignore
         self.training_frame_start_callback: Callable[[Trainer, Frame], bool] = None  # type: ignore
@@ -229,7 +259,8 @@ class Trainer:
     def _step_one_frame(self, frame: Frame, frame_id: int) -> bool:
         """Run insertion + key-frame update + training for one frame. Returns False if interrupted by callback."""
         t_frame_start = time.perf_counter()
-        points = frame.get_points(to_world_frame=True, device=self.cfg.device)
+        with self.timer_get_points:
+            points = frame.get_points(to_world_frame=True, device=self.cfg.device)
 
         with self.timer_octree_insert:
             _, seen_voxels = self.insert_points_to_octree(points)
@@ -276,6 +307,12 @@ class Trainer:
         )
         self._frame_timing_fh.flush()
 
+        if self._stage_timing_fh is not None:
+            vals = ",".join(f"{t.t * 1e3:.3f}" for _, t in self._stage_timers)
+            self._stage_timing_fh.write(
+                f"{frame_id},{dt_ms:.3f},{int(is_key_frame)},{vals}\n")
+            self._stage_timing_fh.flush()
+
     def _finalize_timing_logs(self) -> None:
         """Close the per-frame CSV and, if profiling, dump per-stage averages."""
         if self._frame_timing_fh is not None:
@@ -284,6 +321,12 @@ class Trainer:
             except Exception:
                 pass
             self._frame_timing_fh = None
+        if self._stage_timing_fh is not None:
+            try:
+                self._stage_timing_fh.close()
+            except Exception:
+                pass
+            self._stage_timing_fh = None
         if self.cfg.profiling:
             stats = self.get_time_stats()
             stats["num_frames"] = self.epoch
@@ -543,17 +586,18 @@ class Trainer:
         b = self._graph_buffers
 
         # Copy this frame's valid rows in; reset the padded tail to "invalid".
-        b["vi"].fill_(-1); b["vip"].fill_(-1); b["vim"].fill_(-1); b["mask"].zero_()
-        b["xyz"][:V].copy_(self.samples.sampled_xyz[:V])
-        b["vi"][:V].copy_(voxel_indices[:V])
-        b["op"][:V].copy_(offset_points_plus[:V])
-        b["om"][:V].copy_(offset_points_minus[:V])
-        b["vip"][:V].copy_(voxel_indices_plus[:V])
-        b["vim"][:V].copy_(voxel_indices_minus[:V])
-        b["gtp"][:V].copy_(self.samples.perturbation_sdf[:V])
-        b["gts"][:V].copy_(self.samples.stratified_sdf[:V])
-        b["pm"][:V].copy_(self.samples.positive_perturbation_mask[:V])
-        b["mask"][:V].copy_(mask[:V])
+        with self.timer_graph_input_copy:
+            b["vi"].fill_(-1); b["vip"].fill_(-1); b["vim"].fill_(-1); b["mask"].zero_()
+            b["xyz"][:V].copy_(self.samples.sampled_xyz[:V])
+            b["vi"][:V].copy_(voxel_indices[:V])
+            b["op"][:V].copy_(offset_points_plus[:V])
+            b["om"][:V].copy_(offset_points_minus[:V])
+            b["vip"][:V].copy_(voxel_indices_plus[:V])
+            b["vim"][:V].copy_(voxel_indices_minus[:V])
+            b["gtp"][:V].copy_(self.samples.perturbation_sdf[:V])
+            b["gts"][:V].copy_(self.samples.stratified_sdf[:V])
+            b["pm"][:V].copy_(self.samples.positive_perturbation_mask[:V])
+            b["mask"][:V].copy_(mask[:V])
 
         def _step():
             self.optimizer.zero_grad(set_to_none=False)
@@ -752,6 +796,7 @@ class Trainer:
 
     def get_time_stats(self) -> dict:
         time_stats = {
+            "get_points": self.timer_get_points.average_t,
             "train_frame": self.timer_train_frame.average_t,
             "octree_insert": self.timer_octree_insert.average_t,
             "key_frame_set_update": self.timer_key_frame_set_update.average_t,
@@ -761,6 +806,7 @@ class Trainer:
             "compute_offset_points": self.timer_compute_offset_points.average_t,
             "find_voxel_indices_offset_points": self.timer_find_voxel_indices_offset_points.average_t,
             "find_voxel_indices_sampled_xyz": self.timer_find_voxel_indices_sampled_xyz.average_t,
+            "graph_input_copy": self.timer_graph_input_copy.average_t,
             "training_iteration": self.timer_training_iteration.average_t,
             # True => GPU per-stage times (cuda.synchronize); False => per-stage
             # CPU dispatch times (perf_counter, no GPU drains). The columns mean

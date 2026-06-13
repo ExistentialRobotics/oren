@@ -12,6 +12,7 @@ def multiple_max_set_coverage(
     num_selections: int,
     num_voxels: int,
     device: str,
+    padded_tensor: Optional[torch.Tensor] = None,
 ):
     """
     Overwrite all voxels contained in the keyframe multiple times
@@ -38,22 +39,27 @@ def multiple_max_set_coverage(
     cnt = 0
     selected_frame_indices = []
 
-    padded_tensor = pad_sequence(kf_voxel_indices, batch_first=True, padding_value=-1)
-    padded_tensor = padded_tensor.long().to(device)  # (B, M)
+    # padded_tensor (B, M): each keyframe's voxel indices, right-padded with -1.
+    # The -1 entries address the sink slot kf_unoptimized_voxels[-1] (kept False),
+    # so they are no-ops in every gather/index_fill below — letting us use rows of
+    # padded_tensor in place of re-transferring kf_voxel_indices[i] to the GPU. The
+    # caller may pass a cached GPU tensor (it only changes when a keyframe is added)
+    # to skip the per-call pad_sequence + H2D; result is identical either way.
+    if padded_tensor is None:
+        padded_tensor = pad_sequence(kf_voxel_indices, batch_first=True, padding_value=-1).long().to(device)
     if kf_unoptimized_voxels is None:
         kf_unoptimized_voxels = torch.zeros(num_voxels + 1, dtype=torch.bool).to(device)  # unoptimized voxels
         kf_all_voxels = torch.zeros(num_voxels + 1, dtype=torch.bool).to(device)  # All voxels to be optimized
-        # kf_optimized_voxels = torch.zeros(num_voxels + 1, dtype=torch.bool).to(device)
 
         kf_seen_voxel_num = torch.tensor(kf_seen_voxel_num)  # (B), on CPU
         value, index = torch.max(kf_seen_voxel_num, dim=0)
-        selected_frame_indices.append(index.item())
+        idx = index.item()
+        selected_frame_indices.append(idx)
 
         kf_unoptimized_voxels.index_fill_(0, padded_tensor.view(-1), True)
         kf_unoptimized_voxels[-1] = False
 
-        voxel_indices = kf_voxel_indices[index].long()
-        kf_unoptimized_voxels.index_fill_(0, voxel_indices.view(-1).to(device), False)
+        kf_unoptimized_voxels.index_fill_(0, padded_tensor[idx], False)
 
         cnt += 1
 
@@ -63,9 +69,10 @@ def multiple_max_set_coverage(
     while cnt < num_selections:
         result_num = torch.sum(kf_unoptimized_voxels[padded_tensor].long(), dim=-1)  # (B)
         value, index = torch.max(result_num, dim=0)
-        selected_frame_indices.append(index.item())
+        idx = index.item()
+        selected_frame_indices.append(idx)
 
-        voxel_indices = kf_voxel_indices[index].long().view(-1).to(device)
+        voxel_indices = padded_tensor[idx]  # GPU row (incl. -1 padding -> sink)
         kf_unoptimized_voxels.index_fill_(0, voxel_indices, False)
 
         cnt += 1

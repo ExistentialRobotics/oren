@@ -3,7 +3,9 @@ from typing import Optional
 
 import torch
 
-from oren.frame import Frame
+from torch.nn.utils.rnn import pad_sequence
+
+from oren.frame import DepthFrame, Frame
 from oren.utils.config_abc import ConfigABC
 from oren.utils.keyframe_util import multiple_max_set_coverage
 
@@ -32,6 +34,17 @@ class KeyFrameSet:
         self.kf_seen_voxel_num: list[int] = []
         self.kf_unoptimized_voxels: Optional[torch.Tensor] = None
         self.kf_all_voxels: Optional[torch.Tensor] = None
+
+        # Persistent all-False bool buffer reused for the is_key_frame IoU (see
+        # there). Allocated lazily on first use; kept clean by resetting only
+        # touched entries so it never needs a full re-zero.
+        self._iou_mask: Optional[torch.Tensor] = None
+
+        # Cached GPU pad_sequence of kf_seen_voxel_indices for select_key_frames.
+        # Rebuilt only when a key frame is added (tracked by count) — between adds
+        # select_key_frames runs every frame but this input is unchanged.
+        self._padded_voxels: Optional[torch.Tensor] = None
+        self._padded_voxels_n: int = -1
 
     def add_key_frame(self, frame: Frame, seen_voxel_indices: torch.Tensor):
         """
@@ -71,15 +84,23 @@ class KeyFrameSet:
                 return True
             return False
 
-        voxels_unique, counts = torch.unique(
-            torch.cat([self.kf_seen_voxel_indices[-1], seen_voxel_indices], dim=0),
-            return_counts=True,
-            sorted=False,
-            dim=0,
-        )
-        n_intersection = torch.sum(counts > 1).item()
-        n_union = voxels_unique.shape[0]
-        iou = n_intersection / n_union
+        # IoU of the two voxel-index sets via a persistent bool occupancy mask
+        # (O(|A|+|B|) scatter/gather) instead of a sort-based torch.unique on the
+        # concatenation — the flamegraph/py-spy flagged that unique as ~14% of
+        # wall. Identical result: A and B are each sets of distinct octree node
+        # indices, so |A∩B| = #(B already marked) and |A∪B| = |A|+|B|-|A∩B|.
+        a = self.kf_seen_voxel_indices[-1].reshape(-1)
+        b = seen_voxel_indices.reshape(-1)
+        if a.numel() == 0 or b.numel() == 0:
+            return True
+        if self._iou_mask is None or self._iou_mask.device != a.device:
+            self._iou_mask = torch.zeros(self.max_num_voxels, dtype=torch.bool, device=a.device)
+        mask = self._iou_mask
+        mask[a] = True
+        n_intersection = int(mask[b].sum().item())
+        mask[a] = False  # reset only touched entries; buffer stays all-False
+        n_union = a.numel() + b.numel() - n_intersection
+        iou = n_intersection / n_union if n_union > 0 else 1.0
         if iou < self.cfg.insert_ratio:
             return True
         return False
@@ -130,6 +151,13 @@ class KeyFrameSet:
             return selected_frame_indices
 
         if self.cfg.frame_selection == "multiple_max_set_coverage":
+            # Rebuild the padded voxel tensor only when a key frame was added.
+            n = len(self.kf_seen_voxel_indices)
+            if self._padded_voxels is None or self._padded_voxels_n != n:
+                self._padded_voxels = pad_sequence(
+                    self.kf_seen_voxel_indices, batch_first=True, padding_value=-1
+                ).long().to(self.device)
+                self._padded_voxels_n = n
             selected_frame_indices, self.kf_unoptimized_voxels, self.kf_all_voxels = multiple_max_set_coverage(
                 self.kf_seen_voxel_num,
                 self.kf_seen_voxel_indices,
@@ -138,6 +166,7 @@ class KeyFrameSet:
                 self.cfg.selection_window_size,
                 num_voxels=self.max_num_voxels,
                 device=self.device,
+                padded_tensor=self._padded_voxels,
             )
             return selected_frame_indices
 
@@ -214,37 +243,73 @@ class KeyFrameSet:
                     elif samples_per_frame[idx] > 1:
                         samples_per_frame[idx] -= 1
 
-        rays_o_all = []
-        rays_d_all = []
-        depth_samples_all = []
+        # Per-key-frame sample-count bookkeeping (drives the non-uniform weighting
+        # on the next call); applies to the key frames only, not the appended
+        # current_frame. Pure Python — kept out of the GPU work below.
+        for frame_idx in range(len(key_frame_indices)):
+            self.sample_counts[key_frame_indices[frame_idx]] += samples_per_frame[frame_idx]
+
+        device = frames[0].get_ref_pose().device
+
+        # Fast path: camera DepthFrames share one pixel->ray template (constant
+        # intrinsics), so all frames can be sampled with a handful of batched ops
+        # instead of ~6 GPU kernels per frame in a Python loop. With num_rays_total
+        # tiny (e.g. 1024) the arithmetic is microseconds — the per-launch GIL
+        # contention in that loop was the real cost, so collapsing the launch count
+        # (and making it independent of n_frames) is the win. Non-DepthFrame inputs
+        # (e.g. LiDAR, whose ray directions differ per frame) take the loop below.
+        template_numel = frames[0].get_rays_direction().numel()
+        if all(isinstance(f, DepthFrame) and f.get_rays_direction().numel() == template_numel
+               for f in frames):
+            # Concatenate every frame's valid-pixel indices into one flat buffer,
+            # remembering each frame's [offset, offset+len) span within it.
+            valid_list = []
+            for frame_idx in range(n_frames):
+                if frame_idx < len(key_frame_indices):
+                    valid_list.append(self.valid_indices[key_frame_indices[frame_idx]].view(-1))
+                else:
+                    valid_list.append(torch.nonzero(frames[frame_idx].get_valid_mask().view(-1)).view(-1))
+            valid_lens = torch.tensor([v.numel() for v in valid_list], device=device)
+            valid_cat = torch.cat(valid_list)
+            valid_offset = torch.cumsum(valid_lens, 0) - valid_lens
+
+            # Frame id for each of the num_samples draws (per-frame budgets concatenated).
+            spf = torch.tensor(samples_per_frame, device=device)
+            frame_id = torch.repeat_interleave(torch.arange(n_frames, device=device), spf)
+
+            # Uniform random pixel within each draw's frame's valid set.
+            lens_per_sample = valid_lens[frame_id]
+            rand_pos = (torch.rand(num_samples, device=device) * lens_per_sample).long()
+            rand_pos = torch.minimum(rand_pos, lens_per_sample - 1)  # guard fp rounding up to len
+            sample_idx = valid_cat[valid_offset[frame_id] + rand_pos]  # (num_samples,) pixel index
+
+            # Batched pose + shared-template gathers.
+            poses = torch.stack([f.get_ref_pose() for f in frames])[frame_id]  # (num_samples,4,4)
+            rays_o_all = poses[:, :3, 3]  # (num_samples, 3)
+            rays_d_cam = frames[0].get_rays_direction().view(-1, 3)[sample_idx]  # (num_samples, 3)
+            # world dir = R @ d_cam (same as the per-frame d_cam @ R.T).
+            rays_d_all = torch.bmm(poses[:, :3, :3], rays_d_cam.unsqueeze(-1)).squeeze(-1)
+
+            depth_stack = torch.stack([f.get_depth().view(-1) for f in frames])  # (n_frames, HW)
+            depth_samples_all = depth_stack[frame_id, sample_idx]  # (num_samples,)
+
+            return rays_o_all, rays_d_all, depth_samples_all
+
+        # Fallback: per-frame loop (general; handles non-DepthFrame ray templates).
+        rays_o_all, rays_d_all, depth_samples_all = [], [], []
         for frame_idx, frame in enumerate(frames):
             n_frame_samples = samples_per_frame[frame_idx]
-
             if frame_idx < len(key_frame_indices):
-                i = key_frame_indices[frame_idx]
-                self.sample_counts[i] += n_frame_samples
-                valid_idx = self.valid_indices[i]
+                valid_idx = self.valid_indices[key_frame_indices[frame_idx]]
             else:
                 valid_idx = torch.nonzero(frame.get_valid_mask().view(-1))
-            # randint must live on valid_idx's device (frames are now on the GPU)
-            # or the gather below hits a cross-device indexing error.
+            # randint must live on valid_idx's device (frames are on the GPU).
             sample_idx = valid_idx[
                 torch.randint(0, valid_idx.shape[0], (n_frame_samples,), device=valid_idx.device)
-            ]
-            sample_idx = sample_idx.view(-1)
-
+            ].view(-1)
             pose = frame.get_ref_pose()
-            rotation = pose[:3, :3]
-            sampled_rays_d = frame.get_rays_direction().view(-1, 3)[sample_idx]  # (n_frame_samples, 3)
-            sampled_rays_d = sampled_rays_d @ rotation.T  # (n_frame_samples, 3)
-            sampled_rays_o = pose[:3, 3].view(1, 3).expand_as(sampled_rays_d)  # (n_frame_samples, 3)
-            rays_o_all.append(sampled_rays_o)
+            sampled_rays_d = frame.get_rays_direction().view(-1, 3)[sample_idx] @ pose[:3, :3].T
             rays_d_all.append(sampled_rays_d)
-
-            sampled_depth = frame.get_depth().view(-1)[sample_idx]  # (n_frame_samples,)
-            depth_samples_all.append(sampled_depth)
-
-        rays_o_all = torch.cat(rays_o_all, dim=0)  # (num_samples, 3)
-        rays_d_all = torch.cat(rays_d_all, dim=0)  # (num_samples, 3)
-        depth_samples_all = torch.cat(depth_samples_all, dim=0)  # (num_samples,)
-        return rays_o_all, rays_d_all, depth_samples_all
+            rays_o_all.append(pose[:3, 3].view(1, 3).expand_as(sampled_rays_d))
+            depth_samples_all.append(frame.get_depth().view(-1)[sample_idx])
+        return torch.cat(rays_o_all, dim=0), torch.cat(rays_d_all, dim=0), torch.cat(depth_samples_all, dim=0)
