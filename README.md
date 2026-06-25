@@ -123,7 +123,7 @@ DATA_DIR=<replica_preprocessed_path> ./scripts/replica_augment_views.bash
 ### Newer College
 
 We test OREN on the `quad-easy` sequence of the Newer College dataset. The original data is in ROS1 bag format and contains LiDAR motion distortion, which impacts the SDF learning quality.
-We preprocess the data with our modified [DLIO](https://github.com/ExistentialRobotics/direct-lidar-inertial-odometry) and provide the processed data in a format compatible with our trainer. You can download it from [Hugging Face](https://huggingface.co/datasets/erl-ucsd/oren-datasets/resolve/main/newer-college-quad-rotated.tar.gz).
+We preprocess the data with our modified [DLIO](https://github.com/ExistentialRobotics/direct_lidar_inertial_odometry) and provide the processed data in a format compatible with our trainer. You can download it from [Hugging Face](https://huggingface.co/datasets/erl-ucsd/oren-datasets/resolve/main/newer-college-quad-rotated.tar.gz).
 
 ROS2 bag format is also available for the same sequence, which can be directly used with our ROS2 mapping node. You can also download it from [Hugging Face](https://huggingface.co/datasets/erl-ucsd/oren-datasets/resolve/main/newer-college-quad-dlio-bag.tar.gz).
 
