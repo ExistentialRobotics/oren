@@ -2,6 +2,8 @@ from typing import Optional
 
 import torch
 
+from oren.utils.depth_utils import _camera_ray_directions, camera_ray_directions
+
 
 class Frame:
     def get_frame_index(self) -> int:
@@ -16,7 +18,9 @@ class Frame:
     def get_rays_direction(self) -> torch.Tensor:
         raise NotImplementedError
 
-    def get_depth(self) -> torch.Tensor:
+    def get_depth(self, mask=None) -> torch.Tensor:
+        """Float depth in meters. With `mask` (flat index or boolean over the flattened
+        depth), return only that subset — converting only it for compressed storage."""
         raise NotImplementedError
 
     def get_valid_mask(self) -> torch.Tensor:
@@ -45,6 +49,8 @@ class DepthFrame(Frame):
         ref_pose: torch.Tensor,
         min_depth: Optional[float] = None,
         max_depth: Optional[float] = None,
+        depth_storage_dtype: str = "fp32",
+        depth_scale: float = 6553.5,
         device: str = None,
     ) -> None:
         """
@@ -55,6 +61,12 @@ class DepthFrame(Frame):
             ref_pose: (4, 4) reference pose in world coordinates
             min_depth: float, min depth in meter
             max_depth: float, max depth in meter
+            depth_storage_dtype: storage dtype for depth: "fp32" (no compression), "fp16"
+                (half, ~1-4 mm error), or "uint16" (int * 1/depth_scale, lossless to the
+                source PNG quantization; halves storage vs fp32). rays_d and valid_mask are
+                always derived from the original float depth before compression.
+            depth_scale: meters-per-unit divisor for "uint16" storage (depth_units =
+                round(depth_m * depth_scale), reconstructed as units / depth_scale).
             device: str, device to put the tensors on
         """
 
@@ -63,7 +75,6 @@ class DepthFrame(Frame):
         self.h, self.w = depth.shape
         if not isinstance(depth, torch.Tensor):
             depth = torch.FloatTensor(depth)  # / 2
-        self.depth = depth
         self.K = intrinsic
 
         if ref_pose.ndim != 2:
@@ -73,19 +84,52 @@ class DepthFrame(Frame):
         else:  # from tracked data
             self.ref_pose = ref_pose.clone().requires_grad_(False)
 
-        self.rays_d: torch.Tensor = self.get_rays(K=self.K)  # (H, W, 3) in camera coordinates
-        self.points: torch.Tensor = self.rays_d * self.depth[..., None]  # (H, W, 3) in camera coordinates
+        # Derive rays_d and valid_mask from the original FLOAT depth, then store depth in the
+        # configured storage dtype. The (H, W, 3) camera-frame points are reconstructed on demand
+        # via the `points` property (rays_d * depth), so no 3-channel tensor is retained per key
+        # frame. `rays_d` is the shared cache entry (same H/W/K/device/dtype) and must not be
+        # mutated in place. depth is exposed as float meters via get_depth(mask=None).
+        self.depth_storage_dtype = depth_storage_dtype
+        self.depth_scale = float(depth_scale)
+        self.rays_d: torch.Tensor = camera_ray_directions(depth, self.K)  # (H, W, 3) unit-depth rays
         if min_depth is not None and max_depth is not None:
-            self.valid_mask: torch.Tensor = (self.depth > min_depth) & (self.depth < max_depth)  # (H, W) depth > 0
+            self.valid_mask: torch.Tensor = (depth > min_depth) & (depth < max_depth)  # (H, W) depth > 0
         else:
-            self.valid_mask: torch.Tensor = self.depth > 0  # (H, W) depth > 0
+            self.valid_mask: torch.Tensor = depth > 0  # (H, W) depth > 0
+        self._depth_raw: torch.Tensor = self._encode_depth(depth)  # (H, W) in storage dtype
 
         if device is not None:
-            self.depth = self.depth.to(device)
+            self._depth_raw = self._depth_raw.to(device)
             self.ref_pose = self.ref_pose.to(device)
             self.rays_d = self.rays_d.to(device)
-            self.points = self.points.to(device)
             self.valid_mask = self.valid_mask.to(device)
+
+    def _encode_depth(self, depth_m: torch.Tensor) -> torch.Tensor:
+        """float meters -> storage dtype."""
+        if self.depth_storage_dtype == "uint16":
+            return torch.clamp((depth_m.float() * self.depth_scale).round(), 0, 65535).to(torch.uint16)
+        if self.depth_storage_dtype == "fp16":
+            return depth_m.half()
+        return depth_m.float()
+
+    def _decode_depth(self, raw: torch.Tensor) -> torch.Tensor:
+        """storage dtype -> float meters."""
+        if self.depth_storage_dtype == "uint16":
+            return raw.float() / self.depth_scale
+        if self.depth_storage_dtype == "fp16":
+            return raw.float()
+        return raw  # fp32: already float meters (no copy)
+
+    def get_depth(self, mask=None) -> torch.Tensor:
+        """Float depth in meters, decoded from storage. With `mask` (flat index or boolean
+        over the flattened depth), decode only that subset to save computation."""
+        raw = self._depth_raw if mask is None else self._depth_raw.reshape(-1)[mask]
+        return self._decode_depth(raw)
+
+    @property
+    def points(self) -> torch.Tensor:
+        """(H, W, 3) camera-frame points, reconstructed on demand as `rays_d * depth`."""
+        return self.rays_d * self.get_depth()[..., None]
 
     def get_frame_index(self):
         return self.stamp
@@ -104,16 +148,16 @@ class DepthFrame(Frame):
         w = self.w if w is None else w
         h = self.h if h is None else h
         if K is None:
-            K = torch.eye(3)
-            K[0, 0] = self.K[0, 0] * w / self.w
-            K[1, 1] = self.K[1, 1] * h / self.h
-            K[0, 2] = self.K[0, 2] * w / self.w
-            K[1, 2] = self.K[1, 2] * h / self.h
-        ix, iy = torch.meshgrid(torch.arange(w), torch.arange(h), indexing="xy")
-        rays_d = torch.stack(
-            [(ix - K[0, 2]) / K[0, 0], (iy - K[1, 2]) / K[1, 1], torch.ones_like(ix)], -1
-        ).float()  # camera coordinate
-        return rays_d
+            # Scale the stored intrinsics to the requested (w, h) resolution.
+            fx = float(self.K[0, 0]) * w / self.w
+            fy = float(self.K[1, 1]) * h / self.h
+            cx = float(self.K[0, 2]) * w / self.w
+            cy = float(self.K[1, 2]) * h / self.h
+        else:
+            fx, fy, cx, cy = float(K[0, 0]), float(K[1, 1]), float(K[0, 2]), float(K[1, 2])
+        # Pixel-center rays via the shared cache keyed on (h, w, intrinsics, device, dtype).
+        # The returned tensor is shared across calls and must not be mutated in place.
+        return _camera_ray_directions(int(h), int(w), fx, fy, cx, cy, self.rays_d.device, self.rays_d.dtype)
 
     def get_points(self, to_world_frame: bool, device: str):
         points = self.points.to(device)  # (H, W, 3)
@@ -128,9 +172,6 @@ class DepthFrame(Frame):
 
     def get_rays_direction(self):
         return self.rays_d
-
-    def get_depth(self):
-        return self.depth
 
     def get_valid_mask(self):
         return self.valid_mask
@@ -147,7 +188,7 @@ class DepthFrame(Frame):
             bound_min (torch.Tensor): Lower corner (3,) of the bounding box, in world coordinates.
             bound_max (torch.Tensor): Upper corner (3,) of the bounding box, in world coordinates.
         """
-        device = self.points.device
+        device = self._depth_raw.device
         bound_min = bound_min.to(device)
         bound_max = bound_max.to(device)
 
@@ -183,11 +224,12 @@ class DepthFrame(Frame):
         # Back to camera coordinates
         projected_cam = (projected_world - t_c2w) @ R_c2w
 
-        # Write projected points back
+        # Write projected points back (decode to float, modify, re-encode to storage dtype).
         full_mask = mask.clone()
         full_mask[mask] = oob_mask
-        self.points[full_mask] = projected_cam
-        self.depth[full_mask] = projected_cam[:, 2]
+        depth_f = self.get_depth()  # float (H, W); for fp32 this is the stored tensor itself
+        depth_f[full_mask] = projected_cam[:, 2]
+        self._depth_raw = self._encode_depth(depth_f)
 
     def apply_bound(self, bound_min: torch.Tensor, bound_max: torch.Tensor):
         points = self.points @ self.ref_pose[:3, :3].T + self.ref_pose[:3, 3]
@@ -259,8 +301,9 @@ class LiDARFrame:
             points = points @ pose[:3, :3].T + pose[:3, 3]  # to world coordinates
         return points
 
-    def get_depth(self):
-        return torch.norm(self.points, dim=-1)  # (N,)
+    def get_depth(self, mask=None):
+        pts = self.points if mask is None else self.points.reshape(-1, 3)[mask]
+        return torch.norm(pts, dim=-1)  # (N,)
 
     @torch.no_grad()
     def get_rays(self):

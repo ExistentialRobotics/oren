@@ -18,6 +18,7 @@ class DataConfig(ConfigABC):
     bound_max: Optional[list[float]] = None
     start_frame: int = 0
     end_frame: int = -1
+    depth_storage_dtype: str = "fp32"   # depth storage: fp32 | fp16 | uint16 (image-depth datasets only)
 
     def __post_init__(self):
         super().__post_init__()
@@ -28,3 +29,4 @@ class DataConfig(ConfigABC):
         self.dataset_args["apply_bound"] = self.apply_bound
         self.dataset_args["bound_min"] = self.bound_min
         self.dataset_args["bound_max"] = self.bound_max
+        self.dataset_args["depth_storage_dtype"] = self.depth_storage_dtype

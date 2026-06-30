@@ -20,6 +20,7 @@ class DataLoader(Dataset):
         apply_bound: bool = False,
         bound_min: Optional[torch.Tensor] = None,
         bound_max: Optional[torch.Tensor] = None,
+        depth_storage_dtype: str = "fp32",  # accepted for config parity; LiDAR frames store points (no depth compression)
     ):
         data_path = osp.expanduser(data_path)
         data_path = osp.abspath(data_path)
@@ -31,6 +32,7 @@ class DataLoader(Dataset):
         self.apply_bound = apply_bound
         self.bound_min = bound_min
         self.bound_max = bound_max
+        self.depth_storage_dtype = depth_storage_dtype
 
         if self.bound_min is None or self.bound_max is None:
             mesh_path = osp.join(data_path, "gt-mesh.ply")

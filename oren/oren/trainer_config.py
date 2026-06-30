@@ -35,6 +35,9 @@ class TrainerConfig(ConfigABC):
     final_iterations: int = 0  # number of iterations after all frames are processed, 0 means no extra iterations
     final_evaluate: bool = True  # whether to call evaluate() in the cleanup finally
     final_save_model: bool = True  # whether to write final.pth in the cleanup finally
+    # Dump profiling results to `<log_dir>/misc/profiling_stats.yaml` at the end of `train()`.
+    # The per-timer/per-memory-profiler breakdown is only populated when `profiling=True`.
+    final_save_profiling_stats: bool = True
     save_mesh: bool = True  # whether to save the final mesh
     mesh_resolution: float = 0.0125
     mesh_iso_value: float = 0.0

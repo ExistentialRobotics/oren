@@ -16,6 +16,11 @@ class KeyFrameSetConfig(ConfigABC):
     frame_selection: str = "multiple_max_set_coverage"  # multiple_max_set_coverage | random
     selection_window_size: int = 8
     frame_weight: str = "uniform"
+    # Cache per-key-frame valid-pixel indices (nonzero of the valid mask). True keeps a
+    # (num_valid, 1) int32 table per key frame (~3.3 MB/frame for a 1200x680 frame) to avoid
+    # recomputing nonzero at sample time. False recomputes nonzero(valid_mask) on demand in
+    # sample_rays, trading ~1% wall time for ~3.3 MB/key-frame of CPU memory.
+    cache_valid_indices: bool = True
 
 
 class KeyFrameSet:
@@ -105,8 +110,11 @@ class KeyFrameSet:
         self.kf_seen_voxel_indices.append(seen_voxel_indices)
         self.kf_seen_voxel_num.append(seen_voxel_indices.shape[0])
 
-        valid_idx = torch.nonzero(frame.get_valid_mask().view(-1))
-        self.valid_indices.append(valid_idx)
+        if self.cfg.cache_valid_indices:
+            # int32 halves the stored index table vs nonzero's default int64.
+            # pixel counts stay well under 2**31.
+            valid_idx = torch.nonzero(frame.get_valid_mask().view(-1)).to(torch.int32)
+            self.valid_indices.append(valid_idx)
         self.sample_counts.append(sum(self.sample_counts) // (len(self.sample_counts) + 2))
 
         if self.cfg.frame_selection == "multiple_max_set_coverage" and self.kf_unoptimized_voxels is not None:
@@ -223,7 +231,10 @@ class KeyFrameSet:
             if frame_idx < len(key_frame_indices):
                 i = key_frame_indices[frame_idx]
                 self.sample_counts[i] += n_frame_samples
-                valid_idx = self.valid_indices[i]
+                if self.cfg.cache_valid_indices:
+                    valid_idx = self.valid_indices[i]
+                else:
+                    valid_idx = torch.nonzero(frame.get_valid_mask().view(-1))
             else:
                 valid_idx = torch.nonzero(frame.get_valid_mask().view(-1))
             sample_idx = valid_idx[torch.randint(0, valid_idx.shape[0], (n_frame_samples,))]
@@ -237,7 +248,7 @@ class KeyFrameSet:
             rays_o_all.append(sampled_rays_o)
             rays_d_all.append(sampled_rays_d)
 
-            sampled_depth = frame.get_depth().view(-1)[sample_idx]  # (n_frame_samples,)
+            sampled_depth = frame.get_depth(sample_idx)  # (n_frame_samples,) index-then-convert
             depth_samples_all.append(sampled_depth)
 
         rays_o_all = torch.cat(rays_o_all, dim=0)  # (num_samples, 3)

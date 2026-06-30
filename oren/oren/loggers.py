@@ -48,6 +48,22 @@ class BasicLogger:
         out_path = os.path.join(self.backup_dir, "config.yaml")
         yaml.dump(config_dict, open(out_path, "w"))
 
+    def log_profiling_stats(self, stats: dict, name: str = "profiling_stats.yaml") -> str:
+        """Dump per-timer wall-clock / memory stats to `<misc_dir>/<name>` (or to an absolute path).
+
+        Args:
+            stats: profiling stats dictionary.
+            name: file name; treated as absolute if it starts with `/`, otherwise placed under `misc_dir`.
+
+        Returns:
+            The absolute path the stats were written to.
+        """
+        out_path = name if os.path.isabs(name) else os.path.join(self.misc_dir, name)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        with open(out_path, "w") as f:
+            yaml.dump(stats, f, sort_keys=False)
+        return out_path
+
     def log_mesh(self, mesh, name="final_mesh.ply"):
         out_path = os.path.join(self.mesh_dir, name)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)

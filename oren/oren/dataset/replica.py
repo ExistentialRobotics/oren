@@ -21,6 +21,8 @@ class DataLoader(Dataset):
         apply_bound: bool = False,
         bound_min: Optional[torch.Tensor] = None,
         bound_max: Optional[torch.Tensor] = None,
+        depth_storage_dtype: str = "fp32",
+        depth_scale: float = 6553.5,
     ):
         data_path = osp.expanduser(data_path)
         data_path = osp.abspath(data_path)
@@ -32,6 +34,8 @@ class DataLoader(Dataset):
         self.apply_bound = apply_bound
         self.bound_min = bound_min
         self.bound_max = bound_max
+        self.depth_storage_dtype = depth_storage_dtype
+        self.depth_scale = depth_scale  # depth PNG scale: depth_m = raw_png / depth_scale; also used for uint16 storage
 
         if self.bound_min is None or self.bound_max is None:
             scene_name = osp.basename(osp.abspath(data_path))
@@ -73,7 +77,7 @@ class DataLoader(Dataset):
 
     def load_depth(self, index) -> torch.Tensor:
         depth = cv2.imread(osp.join(self.data_path, "results/depth{:06d}.png".format(index)), -1)
-        depth = depth / 6553.5
+        depth = depth / self.depth_scale
         if self.min_depth >= 0:
             depth[depth < self.min_depth] = 0
         if self.max_depth > 0:
@@ -87,7 +91,14 @@ class DataLoader(Dataset):
     def __getitem__(self, index):
         depth = self.load_depth(index)
         pose = self.gt_pose[index]
-        frame = DepthFrame(index, depth, self.K, pose)
+        frame = DepthFrame(
+            index,
+            depth,
+            self.K,
+            pose,
+            depth_storage_dtype=self.depth_storage_dtype,
+            depth_scale=self.depth_scale,
+        )
         if self.apply_bound:
             frame.apply_bound(self.bound_min, self.bound_max)
         return frame
